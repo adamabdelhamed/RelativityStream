@@ -481,3 +481,72 @@ No handwaving.
 No “probably works.”
 
 Prove it.
+
+## Work Reports
+
+After each completed Codex task or coherent milestone slice, add a Markdown
+entry under `WorkReports/`.
+
+Report file names should be easy to sort and understand:
+
+```text
+WorkReports/YYYY-MM-DD-short-task-name.md
+```
+
+Each report should explain:
+
+- what changed
+- why the change was made
+- how to run or use what was built
+- which automated checks were run
+- which browser checks were performed
+- what Codex could validate independently
+- what the human owner should review or steer next
+- any limitations, setup notes, or follow-up work
+
+Write reports for a reasonably strong software engineer who may not be an
+expert in the current frontend stack. Prefer concrete commands and plain
+language over framework shorthand.
+
+## Windows Machine Notes
+
+This repo is being worked on from Windows in PowerShell and Visual Studio.
+
+- Assume `rg` may not be available. Use PowerShell commands such as
+  `Get-ChildItem`, `Select-String`, and `Get-Content` when searching or reading.
+- Be careful with PowerShell path handling. Prefer explicit absolute paths for
+  cross-directory operations, and verify path variables before copying,
+  deleting, or moving files.
+- `Start-Process` on this machine requires separate files for
+  `-RedirectStandardOutput` and `-RedirectStandardError`; it rejects using the
+  same log file for both streams.
+- Avoid noisy shell output made from chained separator commands. Run focused
+  commands and summarize the important output in the final response.
+- Keep new Markdown and code edits ASCII unless there is a clear reason to use
+  non-ASCII characters. The existing `AGENTS.md` has displayed encoding
+  artifacts in PowerShell, so avoid adding more punctuation that depends on
+  encoding interpretation.
+- Git may warn that LF will be replaced by CRLF on Windows. Treat this as a
+  normal line-ending normalization warning unless the task is specifically about
+  line endings.
+- Use npm scripts for common workflows so Visual Studio and terminal usage stay
+  simple. Current expected scripts include `npm run dev`, `npm run dev:host`,
+  `npm run lint`, `npm test`, `npm run build`, `npm run check`, and
+  `npm run test:e2e`.
+
+## Browser Validation Notes
+
+Codex can use automated Playwright tests and the Codex in-app browser to verify
+local UI changes. Codex should use those tools for page load, console errors,
+basic visibility, layout sanity, and simple interactions.
+
+The human owner should still review product direction and subjective quality:
+
+- whether the metaphor feels right
+- whether the educational copy lands clearly
+- whether the visual tone matches the desired cinematic mission-control feel
+- whether the next milestone is the most useful slice of work
+
+When browser validation is performed, the WorkReports entry should distinguish
+between automated Playwright coverage, Codex in-app browser inspection, and any
+manual review requested from the human owner.
