@@ -16,6 +16,7 @@ test('opens and drives the visual RelativityStream model view', async ({ page })
   await expect(page.getByText('0.0 y / 12.0 y')).toBeVisible()
   await expect(page.getByText('Traveler reunion')).toBeVisible()
   await expect(page.getByText('7.2 y')).toBeVisible()
+  await expect(page.getByRole('slider', { name: 'Turnaround distance' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Earth POV' })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -24,11 +25,12 @@ test('opens and drives the visual RelativityStream model view', async ({ page })
   await page.getByRole('button', { name: 'Play' }).click()
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Faster' }).click()
+  await page.getByRole('slider', { name: 'Velocity' }).fill('0.85')
   await expect(page.getByText('0.85 c')).toBeVisible()
 
   await page.getByRole('button', { name: 'Reset' }).click()
   await expect(page.getByText('0.80 c')).toBeVisible()
+  await expect(page.getByText('4.8 ly')).toBeVisible()
 
   await page.getByRole('slider', { name: 'Timeline' }).fill('6')
   await page.getByRole('button', { name: 'Traveler POV' }).click()

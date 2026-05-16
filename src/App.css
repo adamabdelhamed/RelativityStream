@@ -303,14 +303,41 @@ dt {
   stroke-width: 2.5;
 }
 
+.overlay-pulse.turnaround {
+  stroke: #f8fafc;
+  stroke-width: 5;
+  filter: drop-shadow(0 0 12px rgba(248, 250, 252, 0.82));
+}
+
 .overlay-pulse-dot {
   fill: #e07a5f;
   filter: drop-shadow(0 0 8px rgba(224, 122, 95, 0.75));
 }
 
+.overlay-pulse-dot.turnaround {
+  fill: #f8fafc;
+}
+
+.overlay-turnaround-label {
+  fill: #f8fafc;
+  font-size: 12px;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: rgba(3, 8, 18, 0.82);
+  stroke-width: 3px;
+}
+
 .overlay-earth {
   fill: #84cccf;
   filter: drop-shadow(0 0 9px rgba(132, 204, 207, 0.82));
+}
+
+.overlay-ghost-ship {
+  fill: rgba(217, 164, 65, 0.16);
+  stroke: rgba(217, 164, 65, 0.58);
+  stroke-dasharray: 5 5;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 10px rgba(217, 164, 65, 0.34));
 }
 
 .overlay-ship {

@@ -11,13 +11,16 @@ import {
 import './App.css'
 
 const defaultVelocity = 0.8
-const outboundDuration = 6
-const playbackStep = 0.08
-const treeMaturityYears = outboundDuration * 2
+const defaultTurnaroundDistance = 4.8
+const minVelocity = 0.01
+const maxVelocity = 0.99
+const minTurnaroundDistance = 0.5
+const maxTurnaroundDistance = 100
 type PointOfView = 'earth' | 'traveler'
 
 function App() {
   const [velocity, setVelocity] = useState(defaultVelocity)
+  const [turnaroundDistance, setTurnaroundDistance] = useState(defaultTurnaroundDistance)
   const [coordinateTime, setCoordinateTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [pointOfView, setPointOfView] = useState<PointOfView>('earth')
@@ -25,11 +28,13 @@ function App() {
   const scenario = useMemo(
     () => ({
       velocity,
-      outboundDuration,
+      outboundDuration: turnaroundDistance / velocity,
     }),
-    [velocity],
+    [turnaroundDistance, velocity],
   )
   const sample = sampleScenario(scenario, coordinateTime)
+  const playbackStep = Math.max(0.08, sample.totalEarthTime / 300)
+  const treeMaturityYears = sample.totalEarthTime
   const turnaroundReceiveTime = earthReceivesTurnaroundTime(scenario)
   const hasEarthSeenTurnaround = sample.coordinateTime >= turnaroundReceiveTime
   const shipEmissionSeenByEarth = shipEmissionTimeReceivedOnEarth(
@@ -72,16 +77,11 @@ function App() {
     }, 80)
 
     return () => window.clearInterval(timer)
-  }, [isPlaying, sample.totalEarthTime])
+  }, [isPlaying, playbackStep, sample.totalEarthTime])
 
   const resetScenario = () => {
     setVelocity(defaultVelocity)
-    setCoordinateTime(0)
-    setIsPlaying(false)
-  }
-
-  const adjustVelocity = (delta: number) => {
-    setVelocity((value) => Math.min(0.95, Math.max(0, Number((value + delta).toFixed(2)))))
+    setTurnaroundDistance(defaultTurnaroundDistance)
     setCoordinateTime(0)
     setIsPlaying(false)
   }
@@ -94,7 +94,7 @@ function App() {
           <h1 id="page-title">RelativityStream</h1>
         </div>
         <div className="mission-status">
-          <span>{isEarthPov ? 'Earth POV' : 'Traveler POV'} · {phaseLabel(sample.phase)}</span>
+          <span>{isEarthPov ? 'Earth POV' : 'Traveler POV'} - {phaseLabel(sample.phase)}</span>
           <strong>{formatTime(sample.coordinateTime)}</strong>
         </div>
       </header>
@@ -102,7 +102,8 @@ function App() {
       <section className="experience-stage" aria-label="RelativityStream visual simulation">
         <SignalOverlay
           coordinateTime={sample.coordinateTime}
-          outboundDuration={outboundDuration}
+          ghostShipPosition={travelerPositionSeenByEarth}
+          outboundDuration={scenario.outboundDuration}
           velocity={velocity}
         />
 
@@ -196,8 +197,8 @@ function App() {
             <input
               aria-label="Velocity"
               type="range"
-              min="0"
-              max="0.95"
+              min={minVelocity}
+              max={maxVelocity}
               step="0.01"
               value={velocity}
               onChange={(event) => {
@@ -208,14 +209,23 @@ function App() {
             />
             <strong>{velocity.toFixed(2)} c</strong>
           </label>
-          <div className="button-row" aria-label="Velocity step controls">
-            <button type="button" onClick={() => adjustVelocity(-0.05)}>
-              Slower
-            </button>
-            <button type="button" onClick={() => adjustVelocity(0.05)}>
-              Faster
-            </button>
-          </div>
+          <label className="rail-slider compact">
+            <span>Turnaround distance</span>
+            <input
+              aria-label="Turnaround distance"
+              type="range"
+              min={minTurnaroundDistance}
+              max={maxTurnaroundDistance}
+              step="0.1"
+              value={turnaroundDistance}
+              onChange={(event) => {
+                setTurnaroundDistance(Number(event.target.value))
+                setCoordinateTime(0)
+                setIsPlaying(false)
+              }}
+            />
+            <strong>{turnaroundDistance.toFixed(1)} ly</strong>
+          </label>
         </div>
 
         <dl className="clock-strip" aria-label="Clock comparison">
@@ -276,7 +286,11 @@ function StreamView({
       </div>
 
       <div className="scene-window">
-        <TreeScene growth={growth} localAge={localAge} variant={variant} />
+        <TreeScene
+          growth={growth}
+          localAge={localAge}
+          variant={variant}
+        />
       </div>
 
       <div className="stream-telemetry">
@@ -387,12 +401,14 @@ function SpaceBackdrop() {
 
 type SignalOverlayProps = {
   coordinateTime: number
+  ghostShipPosition: number
   outboundDuration: number
   velocity: number
 }
 
 function SignalOverlay({
   coordinateTime,
+  ghostShipPosition,
   outboundDuration,
   velocity,
 }: SignalOverlayProps) {
@@ -412,7 +428,20 @@ function SignalOverlay({
       ? velocity * coordinateTime
       : Math.max(0, maxDistance - velocity * (coordinateTime - outboundDuration))
   const currentY = timeToY(coordinateTime)
-  const pulses = [0, 1.5, 3, 4.5, 6, 7.5, 9, 10.5].filter((time) => time <= coordinateTime)
+  const ghostShipX = positionToX(ghostShipPosition)
+  const pulseTimes = [
+    0,
+    outboundDuration * 0.25,
+    outboundDuration * 0.5,
+    outboundDuration * 0.75,
+    outboundDuration,
+    outboundDuration * 1.25,
+    outboundDuration * 1.5,
+    outboundDuration * 1.75,
+  ]
+  const pulses = pulseTimes.filter((time, index) => (
+    pulseTimes.indexOf(time) === index && time <= coordinateTime
+  ))
 
   return (
     <aside className="signal-overlay" aria-label="Signal propagation view">
@@ -441,6 +470,7 @@ function SignalOverlay({
         />
         <line className="overlay-now" x1={earthX} y1={currentY} x2={farX} y2={currentY} />
         {pulses.map((emissionTime) => {
+          const isTurnaroundPulse = Math.abs(emissionTime - outboundDuration) < 0.001
           const emittedPosition =
             emissionTime <= outboundDuration
               ? velocity * emissionTime
@@ -455,11 +485,33 @@ function SignalOverlay({
 
           return (
             <g key={emissionTime}>
-              <line className="overlay-pulse" x1={startX} y1={startY} x2={endX} y2={visibleEndY} />
-              <circle className="overlay-pulse-dot" cx={endX} cy={visibleEndY} r="3.4" />
+              <line
+                className={`overlay-pulse ${isTurnaroundPulse ? 'turnaround' : ''}`}
+                x1={startX}
+                y1={startY}
+                x2={endX}
+                y2={visibleEndY}
+              />
+              <circle
+                className={`overlay-pulse-dot ${isTurnaroundPulse ? 'turnaround' : ''}`}
+                cx={endX}
+                cy={visibleEndY}
+                r={isTurnaroundPulse ? '5.8' : '3.4'}
+              />
+              {isTurnaroundPulse ? (
+                <text className="overlay-turnaround-label" x={endX - 92} y={visibleEndY - 9}>
+                  turnaround signal
+                </text>
+              ) : null}
             </g>
           )
         })}
+        <circle
+          className="overlay-ghost-ship"
+          cx={ghostShipX}
+          cy={currentY}
+          r="12"
+        />
         <circle className="overlay-earth" cx={earthX} cy={currentY} r="7" />
         <circle className="overlay-ship" cx={positionToX(shipPosition)} cy={currentY} r="8" />
         <text className="overlay-label" x={earthX + 10} y={topY + 12}>Earth</text>
