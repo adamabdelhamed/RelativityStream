@@ -86,6 +86,30 @@ The primary experience should include:
 
 The user should be able to scrub the scenario and see all views update consistently.
 
+## Visual Simulation Direction
+
+The experience should be highly visual, but it should not depend on literal
+webcam footage of Earth and the traveler.
+
+Treat the Earth and astronaut panels as representative simulated streams:
+
+- the astronaut/traveler stream can begin with a human-readable scaled object in
+  the foreground, such as a rotating cube, instrument module, or simple probe
+  marker
+- the traveler stream should sit in an outer-space background with enough depth
+  cues to make motion and signal effects feel concrete
+- the Earth stream should feel grounded and earthly, such as a horizon, ground
+  station, clock tower, city glow, or mission-control reference object
+- both streams should later support visual effects that represent received
+  signal behavior: delay, slow/fast apparent playback, redshift, blueshift, and
+  delayed knowledge of turnaround
+- visuals should remain explanatory rather than decorative; every animation or
+  effect should help the user understand what information is arriving and when
+
+For early iterations, a simple deterministic object such as a cube is preferable
+to a complex scene because it makes playback rate, delay, and color-shift
+effects easier to notice and test.
+
 ## Technical Direction
 
 Prefer a simple, modern web stack.
