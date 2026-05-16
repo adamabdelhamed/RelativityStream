@@ -48,15 +48,15 @@ npm run check
 
 ## Current State
 
-The app currently shows the project title and the basic panel layout. The first
-pure TypeScript relativity model is in `src/model/` and covers constant-speed
-outbound/inbound travel, ship proper time, signal travel, delayed turnaround
-visibility, and apparent stream rates.
+The app currently shows a functional visual scenario view. The pure TypeScript
+relativity model in `src/model/` drives the Earth clock, traveler proper time,
+phase, velocity, signal delay, final clock comparison, compact signal
+propagation overlay, and two simulated stream scenes.
 
-The next UI milestone should connect this model to the visible scenario panels.
 The visual goal is representative simulation rather than literal webcam video:
-an Earth-side scene, a traveler-side space scene, and simple readable objects
-whose apparent playback and color can communicate signal delay and Doppler
-effects.
+the current Earth-side and traveler-side scenes each include a tree whose
+growth is driven by that observer's local elapsed time. Future slices can
+replace or supplement the trees with richer objects once the visual grammar is
+settled.
 
 See `AGENTS.md` for the product vision and repo workflow rules.
