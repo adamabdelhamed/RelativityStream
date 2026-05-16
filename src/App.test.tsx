@@ -19,6 +19,10 @@ describe('App', () => {
     expect(screen.getByText('Earth reunion')).toBeInTheDocument()
     expect(screen.getByText('Traveler reunion')).toBeInTheDocument()
     expect(screen.getByText('7.2 y')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Earth POV' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
   })
 
   it('supports compact playback and velocity controls', () => {
@@ -49,9 +53,26 @@ describe('App', () => {
     })
 
     expect(screen.getByText('6.0 y / 12.0 y')).toBeInTheDocument()
+    expect(screen.getByText('Received ship clock 2.0 y')).toBeInTheDocument()
+    expect(screen.getByText('2.67 ly from Earth')).toBeInTheDocument()
+    expect(screen.getByText('Signal delay 2.67 years')).toBeInTheDocument()
+  })
+
+  it('switches to traveler POV and delays the Earth stream', () => {
+    render(<App />)
+
+    fireEvent.change(screen.getByRole('slider', { name: 'Timeline' }), {
+      target: { value: '6' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Traveler POV' }))
+
+    expect(screen.getByRole('button', { name: 'Traveler POV' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByText('Received Earth stream from 1.2 y')).toBeInTheDocument()
+    expect(screen.getByText('Received clock 1.2 y')).toBeInTheDocument()
     expect(screen.getByText('Ship clock 3.6 y')).toBeInTheDocument()
-    expect(screen.getByText('4.80 ly from Earth')).toBeInTheDocument()
-    expect(screen.getByText('Turnaround not visible yet')).toBeInTheDocument()
   })
 
   it('shows the traveler tree as younger at reunion', () => {

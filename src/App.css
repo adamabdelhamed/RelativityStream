@@ -97,6 +97,20 @@ dt {
   line-height: 1;
 }
 
+.stream-clock {
+  display: grid;
+  gap: 2px;
+  text-align: right;
+}
+
+.stream-clock small {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .scene-window {
   position: relative;
   min-height: 360px;
@@ -339,8 +353,30 @@ dt {
 .rail-controls {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   min-width: 0;
+}
+
+.pov-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.pov-toggle button {
+  min-height: 34px;
+  border-color: transparent;
+  padding-inline: 10px;
+}
+
+.pov-toggle button[aria-pressed='true'] {
+  border-color: rgba(132, 204, 207, 0.55);
+  background: rgba(132, 204, 207, 0.16);
 }
 
 button {
@@ -394,8 +430,10 @@ input[type='range'] {
   display: grid;
   grid-template-columns: repeat(3, auto);
   align-items: center;
+  justify-self: end;
   gap: 10px;
   margin: 0;
+  pointer-events: none;
 }
 
 .clock-strip div {

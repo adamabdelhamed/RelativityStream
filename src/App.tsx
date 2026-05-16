@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   earthApparentShipRate,
-  earthReceivesShipSignal,
+  earthEmissionTimeReceivedOnShip,
   earthReceivesTurnaroundTime,
   sampleScenario,
+  shipEmissionTimeReceivedOnEarth,
+  shipPosition,
+  shipProperTime,
 } from './model'
 import './App.css'
 
@@ -11,11 +14,13 @@ const defaultVelocity = 0.8
 const outboundDuration = 6
 const playbackStep = 0.08
 const treeMaturityYears = outboundDuration * 2
+type PointOfView = 'earth' | 'traveler'
 
 function App() {
   const [velocity, setVelocity] = useState(defaultVelocity)
   const [coordinateTime, setCoordinateTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [pointOfView, setPointOfView] = useState<PointOfView>('earth')
 
   const scenario = useMemo(
     () => ({
@@ -25,13 +30,28 @@ function App() {
     [velocity],
   )
   const sample = sampleScenario(scenario, coordinateTime)
-  const signal = earthReceivesShipSignal(scenario, sample.coordinateTime)
   const turnaroundReceiveTime = earthReceivesTurnaroundTime(scenario)
   const hasEarthSeenTurnaround = sample.coordinateTime >= turnaroundReceiveTime
+  const shipEmissionSeenByEarth = shipEmissionTimeReceivedOnEarth(
+    scenario,
+    sample.coordinateTime,
+  )
+  const earthEmissionSeenByShip = earthEmissionTimeReceivedOnShip(
+    scenario,
+    sample.coordinateTime,
+  )
+  const travelerAgeSeenByEarth = shipProperTime(scenario, shipEmissionSeenByEarth)
+  const travelerPositionSeenByEarth = shipPosition(scenario, shipEmissionSeenByEarth)
   const streamRate =
     sample.phase === 'reunion'
       ? 1
       : earthApparentShipRate(scenario, sample.phase)
+  const isEarthPov = pointOfView === 'earth'
+  const earthDisplayAge = isEarthPov ? sample.earthElapsedTime : earthEmissionSeenByShip
+  const travelerDisplayAge = isEarthPov ? travelerAgeSeenByEarth : sample.shipProperTime
+  const travelerDisplayPosition = isEarthPov
+    ? travelerPositionSeenByEarth
+    : sample.shipPosition
 
   useEffect(() => {
     if (!isPlaying) {
@@ -74,7 +94,7 @@ function App() {
           <h1 id="page-title">RelativityStream</h1>
         </div>
         <div className="mission-status">
-          <span>{phaseLabel(sample.phase)}</span>
+          <span>{isEarthPov ? 'Earth POV' : 'Traveler POV'} · {phaseLabel(sample.phase)}</span>
           <strong>{formatTime(sample.coordinateTime)}</strong>
         </div>
       </header>
@@ -88,29 +108,67 @@ function App() {
 
         <StreamView
           title="Earth view"
-          subtitle={hasEarthSeenTurnaround ? 'Turnaround signal received' : 'Turnaround not visible yet'}
+          subtitle={
+            isEarthPov
+              ? 'Local experience'
+              : `Received Earth stream from ${formatTime(earthEmissionSeenByShip)}`
+          }
           variant="earth"
-          localAge={sample.earthElapsedTime}
+          localAge={earthDisplayAge}
           ageTotal={sample.totalEarthTime}
-          primaryStat={`Local clock ${formatTime(sample.earthElapsedTime)}`}
-          secondaryStat={`Astronaut stream ${streamRate.toFixed(2)}x`}
-          note={`Signal delay ${formatYears(signal.receiveTime - signal.emissionTime)}`}
+          streamMode={isEarthPov ? 'local' : 'received'}
+          primaryStat={`${isEarthPov ? 'Local clock' : 'Received clock'} ${formatTime(earthDisplayAge)}`}
+          secondaryStat={
+            isEarthPov
+              ? `Astronaut stream ${streamRate.toFixed(2)}x`
+              : `Earth signal age ${formatYears(sample.coordinateTime - earthEmissionSeenByShip)}`
+          }
+          note={
+            isEarthPov
+              ? `${hasEarthSeenTurnaround ? 'Turnaround visible' : 'Turnaround not visible yet'}`
+              : 'What the traveler can see from Earth.'
+          }
         />
 
         <StreamView
           title="Traveler view"
-          subtitle={`${phaseLabel(sample.phase)} leg`}
+          subtitle={
+            isEarthPov
+              ? `Received traveler stream from ${formatTime(shipEmissionSeenByEarth)}`
+              : 'Local experience'
+          }
           variant="space"
-          localAge={sample.shipProperTime}
+          localAge={travelerDisplayAge}
           ageTotal={treeMaturityYears}
-          primaryStat={`Ship clock ${formatTime(sample.shipProperTime)}`}
-          secondaryStat={`${sample.shipPosition.toFixed(2)} ly from Earth`}
-          note="The traveler feels normal locally."
+          streamMode={isEarthPov ? 'received' : 'local'}
+          primaryStat={`${isEarthPov ? 'Received ship clock' : 'Ship clock'} ${formatTime(travelerDisplayAge)}`}
+          secondaryStat={`${travelerDisplayPosition.toFixed(2)} ly from Earth`}
+          note={
+            isEarthPov
+              ? `Signal delay ${formatYears(sample.coordinateTime - shipEmissionSeenByEarth)}`
+              : 'The traveler feels normal locally.'
+          }
         />
       </section>
 
       <section className="control-rail" aria-label="Scenario controls">
         <div className="rail-controls">
+          <div className="pov-toggle" aria-label="Point of view">
+            <button
+              type="button"
+              aria-pressed={isEarthPov}
+              onClick={() => setPointOfView('earth')}
+            >
+              Earth POV
+            </button>
+            <button
+              type="button"
+              aria-pressed={!isEarthPov}
+              onClick={() => setPointOfView('traveler')}
+            >
+              Traveler POV
+            </button>
+          </div>
           <button type="button" onClick={() => setIsPlaying((value) => !value)}>
             {isPlaying ? 'Pause' : 'Play'}
           </button>
@@ -188,6 +246,7 @@ type StreamViewProps = {
   primaryStat: string
   secondaryStat: string
   note: string
+  streamMode: 'local' | 'received'
 }
 
 function StreamView({
@@ -199,6 +258,7 @@ function StreamView({
   primaryStat,
   secondaryStat,
   note,
+  streamMode,
 }: StreamViewProps) {
   const growth = Math.min(1, Math.max(0.04, localAge / ageTotal))
 
@@ -209,7 +269,10 @@ function StreamView({
           <p>{title}</p>
           <span>{subtitle}</span>
         </div>
-        <strong>{formatTime(localAge)}</strong>
+        <div className="stream-clock">
+          <small>{streamMode === 'local' ? 'local now' : 'received'}</small>
+          <strong>{formatTime(localAge)}</strong>
+        </div>
       </div>
 
       <div className="scene-window">

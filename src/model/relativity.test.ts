@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   earthApparentShipRate,
+  earthEmissionTimeReceivedOnShip,
   earthReceivesShipSignal,
   earthReceivesTurnaroundTime,
   lorentzFactor,
   sampleScenario,
+  shipEmissionTimeReceivedOnEarth,
   shipPosition,
   shipProperTime,
   signalTravelTime,
@@ -72,6 +74,18 @@ describe('relativity model', () => {
 
     expect(turnaroundReceive).toBeCloseTo(10.8)
     expect(turnaroundReceive).toBeGreaterThan(turnaroundEmission)
+  })
+
+  it('finds the ship event visible on Earth at a receive time', () => {
+    expect(shipEmissionTimeReceivedOnEarth(scenario, 6)).toBeCloseTo(10 / 3)
+    expect(shipEmissionTimeReceivedOnEarth(scenario, 10.8)).toBeCloseTo(6)
+    expect(shipEmissionTimeReceivedOnEarth(scenario, 12)).toBeCloseTo(12)
+  })
+
+  it('finds the Earth event visible on the ship at a receive time', () => {
+    expect(earthEmissionTimeReceivedOnShip(scenario, 3)).toBeCloseTo(0.6)
+    expect(earthEmissionTimeReceivedOnShip(scenario, 6)).toBeCloseTo(1.2)
+    expect(earthEmissionTimeReceivedOnShip(scenario, 12)).toBeCloseTo(12)
   })
 
   it('samples scenario state for future UI consumers', () => {
