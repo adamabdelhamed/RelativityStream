@@ -11,11 +11,9 @@ test('opens and drives the full-screen RelativityStream POV view', async ({ page
   await page.goto('/')
 
   await expect(page).toHaveTitle('RelativityStream')
-  await expect(
-    page.getByRole('heading', { name: 'RelativityStream' }),
-  ).toBeVisible()
+  await expect(page.getByText('Relativity Simulator')).toBeVisible()
   await expect(page.getByRole('region', { name: 'Earth POV', exact: true })).toBeVisible()
-  await expect(page.getByLabel('Traveler POV picture in picture')).toBeVisible()
+  await expect(page.getByLabel('Traveler POV Incoming Stream picture in picture')).toBeVisible()
   await expect(page.getByLabel('Signal propagation view')).toBeVisible()
   await expect(page.getByText('later')).toBeVisible()
   await expect(page.getByText('farther from Earth')).toBeVisible()
@@ -30,6 +28,7 @@ test('opens and drives the full-screen RelativityStream POV view', async ({ page
   const pipCanvas = page.getByLabel('Traveler 3D tree aged to 0.0 y').locator('canvas')
   await expect(mainCanvas).toBeVisible()
   await expect(pipCanvas).toBeVisible()
+  await expect(page.getByLabel('Earth 3D tree aged to 0.0 y')).toHaveAttribute('data-decay-pile-generations', '')
 
   await page.getByRole('slider', { name: 'Timeline' }).fill('6')
   await expect(page.getByText('6.0 y / 222.2 y')).toBeVisible()
@@ -55,7 +54,7 @@ test('opens and drives the full-screen RelativityStream POV view', async ({ page
   await page.getByRole('spinbutton', { name: 'Turnaround distance value' }).press('Enter')
   await expect(page.getByRole('button', { name: '10.0 ly' })).toBeVisible()
 
-  const pip = page.getByLabel('Traveler POV picture in picture')
+  const pip = page.getByLabel('Traveler POV Incoming Stream picture in picture')
   const pipStartBox = await pip.boundingBox()
   expect(pipStartBox).not.toBeNull()
   if (!pipStartBox) {
@@ -87,7 +86,7 @@ test('opens and drives the full-screen RelativityStream POV view', async ({ page
 
   await pip.click()
   await expect(page.getByRole('region', { name: 'Traveler POV', exact: true })).toBeVisible()
-  await expect(page.getByLabel('Earth POV picture in picture')).toBeVisible()
+  await expect(page.getByLabel('Earth POV Incoming Stream picture in picture')).toBeVisible()
   await expect(page.getByText(/Received Earth stream from/)).toBeVisible()
 
   await page.getByRole('button', { name: 'Reset' }).click()
@@ -125,5 +124,30 @@ test('keeps the signal overlay ship marker aligned for low-speed short-distance 
     }
   })
   expect(lowSpeedOverlay.shipCx).toBeCloseTo(lowSpeedOverlay.turnX + 70)
+  expect(consoleErrors).toEqual([])
+})
+
+test('continues tree generations after the visible pool is exceeded', async ({ page }) => {
+  const consoleErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      consoleErrors.push(message.text())
+    }
+  })
+
+  await page.goto('/')
+
+  await page.getByRole('button', { name: '100.0 ly' }).click()
+  await page.getByRole('spinbutton', { name: 'Turnaround distance value' }).fill('1000')
+  await page.getByRole('spinbutton', { name: 'Turnaround distance value' }).press('Enter')
+  await page.getByRole('slider', { name: 'Timeline' }).fill('675')
+
+  await expect(page.getByText('675.0 y / 2222.2 y')).toBeVisible()
+  const earthTree = page.getByLabel('Earth 3D tree aged to 675.0 y')
+  await expect(earthTree.locator('canvas')).toBeVisible()
+  await expect(earthTree).toHaveAttribute('data-visual-tree-year', '675.0')
+  await expect(earthTree).toHaveAttribute('data-visible-generations', '2,3,4,5,6,7,8,9')
+  await expect(earthTree).toHaveAttribute('data-decay-pile-generations', '0,1,2,3,4,5,6,7,8')
+  await expect(page.getByText('NaN')).toHaveCount(0)
   expect(consoleErrors).toEqual([])
 })

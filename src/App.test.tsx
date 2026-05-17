@@ -6,11 +6,10 @@ describe('App', () => {
   it('renders the full-screen POV simulation shell', () => {
     render(<App />)
 
-    expect(
-      screen.getByRole('heading', { name: 'RelativityStream' }),
-    ).toBeInTheDocument()
+    expect(screen.getByText('Relativity Simulator')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'RelativityStream' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('Earth POV')).toBeInTheDocument()
-    expect(screen.getByLabelText('Traveler POV picture in picture')).toBeInTheDocument()
+    expect(screen.getByLabelText('Traveler POV Incoming Stream picture in picture')).toBeInTheDocument()
     expect(screen.getByLabelText('Signal propagation view')).toBeInTheDocument()
     expect(screen.getByText('later')).toBeInTheDocument()
     expect(screen.getByText('farther from Earth')).toBeInTheDocument()
@@ -136,25 +135,25 @@ describe('App', () => {
   it('switches POV from an in-place picture-in-picture click', () => {
     render(<App />)
 
-    const pip = screen.getByLabelText('Traveler POV picture in picture')
+    const pip = screen.getByLabelText('Traveler POV Incoming Stream picture in picture')
     fireEvent.pointerDown(pip, { clientX: 100, clientY: 100, pointerId: 1 })
     fireEvent.pointerUp(pip, { clientX: 100, clientY: 100, pointerId: 1 })
 
     expect(screen.getByLabelText('Traveler POV')).toBeInTheDocument()
-    expect(screen.getByLabelText('Earth POV picture in picture')).toBeInTheDocument()
+    expect(screen.getByLabelText('Earth POV Incoming Stream picture in picture')).toBeInTheDocument()
     expect(screen.getByText('Received Earth stream from 0.0 y')).toBeInTheDocument()
   })
 
   it('does not switch POV when picture-in-picture is dragged', () => {
     render(<App />)
 
-    const pip = screen.getByLabelText('Traveler POV picture in picture')
+    const pip = screen.getByLabelText('Traveler POV Incoming Stream picture in picture')
     fireEvent.pointerDown(pip, { clientX: 100, clientY: 100, pointerId: 1 })
     fireEvent.pointerMove(document, { clientX: 136, clientY: 118, pointerId: 1 })
     fireEvent.pointerUp(document, { clientX: 136, clientY: 118, pointerId: 1 })
 
     expect(screen.getByLabelText('Earth POV')).toBeInTheDocument()
-    expect(screen.getByLabelText('Traveler POV picture in picture')).toBeInTheDocument()
+    expect(screen.getByLabelText('Traveler POV Incoming Stream picture in picture')).toBeInTheDocument()
     expect(fireEvent.contextMenu(pip)).toBe(false)
   })
 

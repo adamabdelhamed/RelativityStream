@@ -7,14 +7,22 @@ import {
   TREE_DUST_PILE_HEIGHT_PER_DEATH_RATIO,
   TREE_DUST_PILE_RADIUS_UNITS,
   TREE_DUST_PARTICLE_COUNT,
-  TREE_FULL_GROWTH_YEARS,
   TREE_LEAVES_PER_SECONDARY_BRANCH,
   TREE_MAX_HEIGHT_UNITS,
   TREE_MAX_VISIBLE_GENERATIONS,
   TREE_PRIMARY_BRANCH_COUNT,
   TREE_SECONDARY_BRANCHES_PER_PRIMARY,
-  TREE_YEARS_PER_EARTH_YEAR,
 } from './tunables'
+import {
+  clamp01,
+  decayPileGenerations,
+  generationGroundPoint,
+  growWindow,
+  phaseAtTreeYear,
+  smoother,
+  visibleTreeGenerations,
+  visualTreeYearFromLocalAge,
+} from './treeLifecycle'
 
 type SceneVariant = 'earth' | 'space'
 
@@ -62,35 +70,25 @@ type TreeGeneration = {
   seed: THREE.Mesh
 }
 
+type DecayPile = {
+  generationIndex: number
+  mesh: THREE.Mesh
+}
+
 type TreeMaterials = {
   bark: THREE.MeshStandardMaterial
   leaf: THREE.MeshStandardMaterial
   root: THREE.MeshStandardMaterial
   seed: THREE.MeshStandardMaterial
-  tip: THREE.MeshStandardMaterial
   young: THREE.MeshStandardMaterial
 }
 
 type SceneObjects = {
   camera: THREE.PerspectiveCamera
-  dustPile: THREE.Mesh
+  decayPiles: DecayPile[]
   renderer: THREE.WebGLRenderer
   scene: THREE.Scene
   trees: TreeGeneration[]
-}
-
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value))
-}
-
-function smoother(value: number): number {
-  const t = clamp01(value)
-
-  return t * t * t * (t * (t * 6 - 15) + 10)
-}
-
-function growWindow(value: number, start: number, end: number): number {
-  return smoother((value - start) / (end - start))
 }
 
 function seededRandom(seed: number): () => number {
@@ -102,26 +100,10 @@ function seededRandom(seed: number): () => number {
   }
 }
 
-function phaseAtTreeYear(localYear: number) {
-  const growth = clamp01(localYear / TREE_FULL_GROWTH_YEARS)
-  const leafFall = growWindow(localYear, TREE_FULL_GROWTH_YEARS, 62)
-  const branchWilt = growWindow(localYear, TREE_FULL_GROWTH_YEARS, 68)
-  const dustBuild = growWindow(localYear, 56, 70)
-  const dustFade = growWindow(localYear, 70, TREE_CYCLE_YEARS)
-  const structureOpacity = 1 - growWindow(localYear, 62, 70)
-  const dustOpacity = dustBuild * (1 - dustFade)
-  const decay = growWindow(localYear, TREE_FULL_GROWTH_YEARS, TREE_CYCLE_YEARS)
+function generationGroundPosition(generationIndex: number) {
+  const point = generationGroundPoint(generationIndex)
 
-  return {
-    branchWilt,
-    decay,
-    dustBuild,
-    dustOpacity,
-    growth,
-    isVisible: localYear >= 0 && localYear < TREE_CYCLE_YEARS,
-    leafFall,
-    structureOpacity,
-  }
+  return new THREE.Vector3(point.x, 0, point.z)
 }
 
 function makeGradientTexture(top: string, middle: string, bottom: string) {
@@ -276,11 +258,6 @@ function createMaterials(variant: SceneVariant): TreeMaterials {
       roughness: 0.84,
       transparent: true,
     }),
-    tip: new THREE.MeshStandardMaterial({
-      color: space ? 0xb9e5ff : 0xbadf79,
-      roughness: 0.8,
-      transparent: true,
-    }),
     young: new THREE.MeshStandardMaterial({
       color: space ? 0xf2b06a : 0x6f8f42,
       emissive: space ? 0x6a2f1e : 0x000000,
@@ -360,6 +337,7 @@ function setMaterialOpacity(material: THREE.Material, opacity: number) {
 function createTreeGeneration(cycleStartYear: number, generationIndex: number, variant: SceneVariant) {
   const random = seededRandom((variant === 'earth' ? 1001 : 2203) + generationIndex * 997)
   const group = new THREE.Group()
+  group.position.copy(generationGroundPosition(generationIndex))
   const materials = createMaterials(variant)
   const tree: TreeGeneration = {
     branches: [],
@@ -413,7 +391,7 @@ function createTreeGeneration(cycleStartYear: number, generationIndex: number, v
       group.add(branchGroup)
     }
 
-    const tip = new THREE.Mesh(new THREE.SphereGeometry(Math.max(radiusEnd * 1.7, 0.022), 12, 8), materials.tip)
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(Math.max(radiusEnd * 1.35, 0.012), 10, 6), material)
     tip.position.copy(curve.getPoint(1))
     tip.castShadow = true
     branchGroup.add(tip)
@@ -552,12 +530,41 @@ function createTreeGeneration(cycleStartYear: number, generationIndex: number, v
   tree.dust.visible = false
   tree.dustStarts = dustStarts
   group.add(tree.dust)
+
   group.visible = false
 
   return tree
 }
 
-function updateTree(tree: TreeGeneration, visualTreeYear: number, variant: SceneVariant, elapsed: number) {
+function createDecayPile(variant: SceneVariant) {
+  const dustPile = new THREE.Mesh(
+    new THREE.CylinderGeometry(1, 1.22, 1, 56, 3),
+    new THREE.MeshStandardMaterial({
+      color: variant === 'earth' ? 0x6b4a2c : 0x5c7080,
+      metalness: variant === 'earth' ? 0 : 0.16,
+      roughness: 0.96,
+      transparent: true,
+      opacity: 0.78,
+    }),
+  )
+  dustPile.visible = false
+  dustPile.receiveShadow = true
+  dustPile.castShadow = true
+
+  return dustPile
+}
+
+function updateTree(
+  tree: TreeGeneration,
+  visualTreeYear: number,
+  generationIndex: number,
+  variant: SceneVariant,
+  elapsed: number,
+) {
+  tree.cycleStartYear = generationIndex * TREE_CYCLE_YEARS
+  tree.generationIndex = generationIndex
+  tree.group.position.copy(generationGroundPosition(generationIndex))
+
   const localYear = visualTreeYear - tree.cycleStartYear
   const phase = phaseAtTreeYear(localYear)
   tree.group.visible = phase.isVisible
@@ -649,21 +656,36 @@ function updateTree(tree: TreeGeneration, visualTreeYear: number, variant: Scene
   positions.needsUpdate = true
 }
 
-function updateDustPile(dustPile: THREE.Mesh, visualTreeYear: number) {
-  const completedDeaths = Math.max(0, Math.floor(visualTreeYear / TREE_CYCLE_YEARS))
-  const localYear = visualTreeYear % TREE_CYCLE_YEARS
-  const currentDecayContribution = phaseAtTreeYear(localYear).dustBuild
-  const pileHeight = Math.max(
-    0.001,
-    (completedDeaths + currentDecayContribution) *
-      TREE_MAX_HEIGHT_UNITS *
-      TREE_DUST_PILE_HEIGHT_PER_DEATH_RATIO,
-  )
-  const pileRadius = TREE_DUST_PILE_RADIUS_UNITS * (1 + Math.sqrt(completedDeaths + currentDecayContribution) * 0.08)
+function updateDustPile(mesh: THREE.Mesh, generationIndex: number, visualTreeYear: number) {
+  const localYear = visualTreeYear - generationIndex * TREE_CYCLE_YEARS
+  const contribution =
+    localYear >= TREE_CYCLE_YEARS
+      ? 1
+      : localYear >= 0
+        ? phaseAtTreeYear(localYear).dustBuild
+        : 0
+  const pileHeight = TREE_MAX_HEIGHT_UNITS * TREE_DUST_PILE_HEIGHT_PER_DEATH_RATIO * (0.56 + contribution * 0.44)
+  const pileRadius = TREE_DUST_PILE_RADIUS_UNITS * (0.78 + contribution * 0.22)
 
-  dustPile.visible = pileHeight > 0.002
-  dustPile.scale.set(pileRadius, pileHeight, pileRadius)
-  dustPile.position.y = pileHeight * 0.5
+  mesh.visible = contribution > 0.02
+  mesh.scale.set(pileRadius, pileHeight, pileRadius)
+  mesh.position.copy(generationGroundPosition(generationIndex))
+  mesh.position.setY(pileHeight * 0.5)
+}
+
+function syncDecayPiles(objects: SceneObjects, visualTreeYear: number, variant: SceneVariant) {
+  const generations = decayPileGenerations(visualTreeYear)
+
+  while (objects.decayPiles.length < generations.length) {
+    const generationIndex = objects.decayPiles.length
+    const mesh = createDecayPile(variant)
+    objects.scene.add(mesh)
+    objects.decayPiles.push({ generationIndex, mesh })
+  }
+
+  for (const pile of objects.decayPiles) {
+    updateDustPile(pile.mesh, pile.generationIndex, visualTreeYear)
+  }
 }
 
 function createScene(mount: HTMLDivElement, variant: SceneVariant): SceneObjects {
@@ -723,14 +745,6 @@ function createScene(mount: HTMLDivElement, variant: SceneVariant): SceneObjects
     ground.receiveShadow = true
     scene.add(ground)
 
-    const soil = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.22, 1.75, 0.32, 96),
-      new THREE.MeshStandardMaterial({ color: 0x24170e, roughness: 0.92 }),
-    )
-    soil.position.y = 0.02
-    soil.castShadow = true
-    soil.receiveShadow = true
-    scene.add(soil)
   } else {
     const random = seededRandom(9902)
     const starsGeometry = new THREE.BufferGeometry()
@@ -759,28 +773,13 @@ function createScene(mount: HTMLDivElement, variant: SceneVariant): SceneObjects
     scene.add(planet)
   }
 
-  const dustPile = new THREE.Mesh(
-    new THREE.CylinderGeometry(1, 1.26, 1, 96, 8),
-    new THREE.MeshStandardMaterial({
-      color: variant === 'earth' ? 0x6b4a2c : 0x5c7080,
-      metalness: variant === 'earth' ? 0 : 0.16,
-      roughness: 0.94,
-      transparent: true,
-      opacity: 0.82,
-    }),
-  )
-  dustPile.visible = false
-  dustPile.receiveShadow = true
-  dustPile.castShadow = true
-  scene.add(dustPile)
-
   const trees = Array.from({ length: TREE_MAX_VISIBLE_GENERATIONS }, (_, index) => {
     const tree = createTreeGeneration(index * TREE_CYCLE_YEARS, index, variant)
     scene.add(tree.group)
     return tree
   })
 
-  return { camera, dustPile, renderer, scene, trees }
+  return { camera, decayPiles: [], renderer, scene, trees }
 }
 
 export function ThreeTreeScene({
@@ -833,11 +832,17 @@ export function ThreeTreeScene({
       frame = window.requestAnimationFrame(animate)
       const elapsed = clock.getElapsedTime()
       const current = propsRef.current
-      const visualTreeYear = current.localAge * TREE_YEARS_PER_EARTH_YEAR
-      for (const tree of objects.trees) {
-        updateTree(tree, visualTreeYear, current.variant, elapsed)
+      const visualTreeYear = visualTreeYearFromLocalAge(current.localAge)
+      const generations = visibleTreeGenerations(visualTreeYear)
+      const pileGenerations = decayPileGenerations(visualTreeYear)
+      mount.dataset.visualTreeYear = visualTreeYear.toFixed(1)
+      mount.dataset.visibleGenerations = generations.join(',')
+      mount.dataset.decayPileGenerations = pileGenerations.join(',')
+      syncDecayPiles(objects, visualTreeYear, current.variant)
+      for (let index = 0; index < objects.trees.length; index += 1) {
+        const tree = objects.trees[index]
+        updateTree(tree, visualTreeYear, generations[index], current.variant, elapsed)
       }
-      updateDustPile(objects.dustPile, visualTreeYear)
       objects.camera.position.set(TREE_CAMERA_POSITION.x, TREE_CAMERA_POSITION.y, TREE_CAMERA_POSITION.z)
       objects.camera.lookAt(TREE_CAMERA_TARGET.x, TREE_CAMERA_TARGET.y, TREE_CAMERA_TARGET.z)
       objects.renderer.render(objects.scene, objects.camera)

@@ -234,8 +234,8 @@ function App() {
     }
 
     if (drag.mode === 'resize') {
-      const width = clamp(drag.width + dx, 230, Math.min(620, window.innerWidth - 40))
-      const height = clamp((drag.height ?? 210) + dy, 150, Math.min(420, window.innerHeight - 140))
+      const width = clamp(drag.width + dx, 230, Math.max(230, window.innerWidth - 24))
+      const height = clamp((drag.height ?? 210) + dy, 150, Math.max(150, window.innerHeight - 92))
       setPipPosition((current) => ({
         ...current,
         height,
@@ -359,8 +359,7 @@ function App() {
 
         <header className="mission-bar" aria-labelledby="page-title">
           <div>
-            <p className="eyebrow">Reality has ping</p>
-            <h1 id="page-title">RelativityStream</h1>
+            <p id="page-title" className="eyebrow">Relativity Simulator</p>
           </div>
           <div className="mission-status">
             <span>{mainView.title} - {phaseLabel(sample.phase)}</span>
@@ -385,7 +384,7 @@ function App() {
             top: pipPosition.top,
             width: pipPosition.width,
           }}
-          aria-label={`${pipView.title} picture in picture`}
+          aria-label={`${pipView.title} Incoming Stream picture in picture`}
           onPointerDown={startPipInteraction}
           onContextMenu={(event) => event.preventDefault()}
         >
@@ -396,7 +395,7 @@ function App() {
             variant={pipView.variant}
           />
           <div className="pip-copy">
-            <span>{pipView.title}</span>
+            <span>{pipView.title} Incoming Stream</span>
             <strong>{formatTime(pipView.localAge)}</strong>
           </div>
           <span className="resize-corner" aria-hidden="true" />
