@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import {
   earthApparentShipRate,
   earthEmissionTimeReceivedOnShip,
@@ -8,24 +8,57 @@ import {
   shipPosition,
   shipProperTime,
 } from './model'
+import { ThreeTreeScene } from './ThreeTreeScene'
+import {
+  DEFAULT_SIMULATION_SPEED,
+  DEFAULT_TURNAROUND_DISTANCE_LY,
+  DEFAULT_VELOCITY_FRACTION_OF_C,
+  MAX_TURNAROUND_DISTANCE_LY,
+  MAX_VELOCITY_FRACTION_OF_C,
+  MIN_TURNAROUND_DISTANCE_LY,
+  MIN_VELOCITY_FRACTION_OF_C,
+  SIMULATION_SPEED_OPTIONS,
+} from './tunables'
 import './App.css'
 
-const defaultVelocity = 0.8
-const defaultTurnaroundDistance = 4.8
-const minVelocity = 0.01
-const maxVelocity = 0.99
-const minTurnaroundDistance = 0.5
-const maxTurnaroundDistance = 100
-const simulationSpeeds = [0.5, 1, 2, 4]
 type PointOfView = 'earth' | 'traveler'
+type PanelPosition = { height?: number; left: number; top: number; width: number }
+type DragState = {
+  pointerId: number
+  height?: number
+  left: number
+  mode: 'move' | 'resize'
+  startX: number
+  startY: number
+  top: number
+  width: number
+}
+type SettingsMenu = 'speed' | 'velocity' | 'distance' | null
 
 function App() {
-  const [velocity, setVelocity] = useState(defaultVelocity)
-  const [turnaroundDistance, setTurnaroundDistance] = useState(defaultTurnaroundDistance)
+  const [velocity, setVelocity] = useState(DEFAULT_VELOCITY_FRACTION_OF_C)
+  const [turnaroundDistance, setTurnaroundDistance] = useState(DEFAULT_TURNAROUND_DISTANCE_LY)
   const [coordinateTime, setCoordinateTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [pointOfView, setPointOfView] = useState<PointOfView>('earth')
-  const [simulationSpeed, setSimulationSpeed] = useState(1)
+  const [simulationSpeed, setSimulationSpeed] = useState(DEFAULT_SIMULATION_SPEED)
+  const [activeMenu, setActiveMenu] = useState<SettingsMenu>(null)
+  const [pipPosition, setPipPosition] = useState<PanelPosition>({
+    height: 210,
+    left: window.innerWidth - 390,
+    top: window.innerHeight - 310,
+    width: 340,
+  })
+  const [signalPosition, setSignalPosition] = useState<PanelPosition>({
+    left: 24,
+    top: window.innerHeight - 420,
+    width: 430,
+  })
+  const interactionMovedRef = useRef(false)
+  const pipDrag = useRef<DragState | null>(null)
+  const signalDrag = useRef<DragState | null>(null)
+  const controlsRef = useRef<HTMLDivElement | null>(null)
+  const suppressContextMenuUntil = useRef(0)
 
   const scenario = useMemo(
     () => ({
@@ -37,7 +70,6 @@ function App() {
   const sample = sampleScenario(scenario, coordinateTime)
   const timelineMax = Number(sample.totalEarthTime.toFixed(1))
   const playbackStep = Math.max(0.08, sample.totalEarthTime / 300) * simulationSpeed
-  const treeMaturityYears = sample.totalEarthTime
   const turnaroundReceiveTime = earthReceivesTurnaroundTime(scenario)
   const hasEarthSeenTurnaround = sample.coordinateTime >= turnaroundReceiveTime
   const shipEmissionSeenByEarth = shipEmissionTimeReceivedOnEarth(
@@ -55,11 +87,23 @@ function App() {
       ? 1
       : earthApparentShipRate(scenario, sample.phase)
   const isEarthPov = pointOfView === 'earth'
-  const earthDisplayAge = isEarthPov ? sample.earthElapsedTime : earthEmissionSeenByShip
-  const travelerDisplayAge = isEarthPov ? travelerAgeSeenByEarth : sample.shipProperTime
-  const travelerDisplayPosition = isEarthPov
-    ? travelerPositionSeenByEarth
-    : sample.shipPosition
+  const mainView = getViewModel(pointOfView, {
+    earthEmissionSeenByShip,
+    hasEarthSeenTurnaround,
+    sample,
+    shipEmissionSeenByEarth,
+    streamRate,
+    travelerAgeSeenByEarth,
+    travelerPositionSeenByEarth,
+  })
+  const pipView = getReceivedViewModel(isEarthPov ? 'traveler' : 'earth', {
+    earthEmissionSeenByShip,
+    sample,
+    shipEmissionSeenByEarth,
+    streamRate,
+    travelerAgeSeenByEarth,
+    travelerPositionSeenByEarth,
+  })
 
   useEffect(() => {
     if (!isPlaying) {
@@ -82,6 +126,30 @@ function App() {
     return () => window.clearInterval(timer)
   }, [isPlaying, playbackStep, sample.totalEarthTime])
 
+  useEffect(() => {
+    const dismiss = (event: PointerEvent) => {
+      if (!controlsRef.current?.contains(event.target as Node)) {
+        if (controlsRef.current?.contains(document.activeElement)) {
+          (document.activeElement as HTMLElement).blur()
+        }
+        window.requestAnimationFrame(() => setActiveMenu(null))
+      }
+    }
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setActiveMenu(null)
+      }
+    }
+
+    document.addEventListener('pointerdown', dismiss)
+    document.addEventListener('keydown', dismissOnEscape)
+
+    return () => {
+      document.removeEventListener('pointerdown', dismiss)
+      document.removeEventListener('keydown', dismissOnEscape)
+    }
+  }, [])
+
   const resetScenario = () => {
     setCoordinateTime(0)
     setIsPlaying(false)
@@ -93,7 +161,7 @@ function App() {
       return
     }
 
-    if (coordinateTime >= sample.totalEarthTime) {
+    if (coordinateTime >= timelineMax) {
       setCoordinateTime(0)
     }
 
@@ -109,109 +177,252 @@ function App() {
   }
 
   const changeVelocity = (nextVelocity: number) => {
-    preserveTimelineProgress(nextVelocity, turnaroundDistance)
-    setVelocity(nextVelocity)
+    const clampedVelocity = clamp(nextVelocity, MIN_VELOCITY_FRACTION_OF_C, MAX_VELOCITY_FRACTION_OF_C)
+    preserveTimelineProgress(clampedVelocity, turnaroundDistance)
+    setVelocity(clampedVelocity)
     setIsPlaying(false)
   }
 
   const changeTurnaroundDistance = (nextTurnaroundDistance: number) => {
-    preserveTimelineProgress(velocity, nextTurnaroundDistance)
-    setTurnaroundDistance(nextTurnaroundDistance)
+    const clampedDistance = clamp(
+      nextTurnaroundDistance,
+      MIN_TURNAROUND_DISTANCE_LY,
+      MAX_TURNAROUND_DISTANCE_LY,
+    )
+    preserveTimelineProgress(velocity, clampedDistance)
+    setTurnaroundDistance(clampedDistance)
     setIsPlaying(false)
   }
 
-  return (
-    <main className="app-shell">
-      <header className="mission-bar" aria-labelledby="page-title">
-        <div>
-          <p className="eyebrow">Reality has ping</p>
-          <h1 id="page-title">RelativityStream</h1>
-        </div>
-        <div className="mission-status">
-          <span>{isEarthPov ? 'Earth POV' : 'Traveler POV'} - {phaseLabel(sample.phase)}</span>
-          <strong>{formatTime(sample.coordinateTime)}</strong>
-        </div>
-      </header>
+  const togglePov = () => {
+    setPointOfView((current) => (current === 'earth' ? 'traveler' : 'earth'))
+  }
 
-      <section className="experience-stage" aria-label="RelativityStream visual simulation">
+  const startPipInteraction = (event: ReactPointerEvent<HTMLElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const isResize = Boolean((event.target as HTMLElement).closest('.resize-corner'))
+    pipDrag.current = {
+      height: pipPosition.height ?? 210,
+      left: pipPosition.left,
+      mode: isResize ? 'resize' : 'move',
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      top: pipPosition.top,
+      width: pipPosition.width,
+    }
+    interactionMovedRef.current = false
+    document.body.classList.add('dragging-pip')
+    if ('setPointerCapture' in event.currentTarget) {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    }
+  }
+
+  const movePipInteraction = (event: Pick<PointerEvent, 'clientX' | 'clientY' | 'pointerId' | 'preventDefault'>) => {
+    const drag = pipDrag.current
+
+    if (!drag || event.pointerId !== drag.pointerId) {
+      return
+    }
+
+    event.preventDefault()
+    const dx = event.clientX - drag.startX
+    const dy = event.clientY - drag.startY
+    if (Math.abs(dx) + Math.abs(dy) > 5) {
+      interactionMovedRef.current = true
+    }
+
+    if (drag.mode === 'resize') {
+      const width = clamp(drag.width + dx, 230, Math.min(620, window.innerWidth - 40))
+      const height = clamp((drag.height ?? 210) + dy, 150, Math.min(420, window.innerHeight - 140))
+      setPipPosition((current) => ({
+        ...current,
+        height,
+        width,
+      }))
+      return
+    }
+
+    setPipPosition((current) => ({
+      ...current,
+      left: clamp(drag.left + dx, 12, window.innerWidth - current.width - 12),
+      top: clamp(drag.top + dy, 12, window.innerHeight - (current.height ?? 210) - 88),
+    }))
+  }
+
+  const endPipInteraction = (event?: Pick<PointerEvent, 'pointerId' | 'preventDefault'>) => {
+    if (event && pipDrag.current && event.pointerId !== pipDrag.current.pointerId) {
+      return
+    }
+
+    event?.preventDefault()
+    if (pipDrag.current && !interactionMovedRef.current && pipDrag.current.mode === 'move') {
+      togglePov()
+    }
+    pipDrag.current = null
+    suppressContextMenuUntil.current = Date.now() + 650
+    document.body.classList.remove('dragging-pip')
+  }
+
+  const startSignalDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    event.preventDefault()
+    signalDrag.current = {
+      left: signalPosition.left,
+      mode: 'move',
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      top: signalPosition.top,
+      width: signalPosition.width,
+    }
+    document.body.classList.add('dragging-pip')
+    if ('setPointerCapture' in event.currentTarget) {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    }
+  }
+
+  const moveSignalInteraction = (event: Pick<PointerEvent, 'clientX' | 'clientY' | 'pointerId' | 'preventDefault'>) => {
+    const drag = signalDrag.current
+
+    if (!drag || event.pointerId !== drag.pointerId) {
+      return
+    }
+
+    event.preventDefault()
+    setSignalPosition((current) => ({
+      ...current,
+      left: clamp(drag.left + event.clientX - drag.startX, 12, window.innerWidth - current.width - 12),
+      top: clamp(drag.top + event.clientY - drag.startY, 12, window.innerHeight - 220),
+    }))
+  }
+
+  const endSignalDrag = (event?: Pick<PointerEvent, 'pointerId' | 'preventDefault'>) => {
+    if (event && signalDrag.current && event.pointerId !== signalDrag.current.pointerId) {
+      return
+    }
+
+    event?.preventDefault()
+    signalDrag.current = null
+    suppressContextMenuUntil.current = Date.now() + 650
+    document.body.classList.remove('dragging-pip')
+  }
+
+  useEffect(() => {
+    const moveActivePointer = (event: PointerEvent) => {
+      if (pipDrag.current) {
+        movePipInteraction(event)
+      }
+
+      if (signalDrag.current) {
+        moveSignalInteraction(event)
+      }
+    }
+    const endActivePointer = (event: PointerEvent) => {
+      if (pipDrag.current) {
+        endPipInteraction(event)
+      }
+
+      if (signalDrag.current) {
+        endSignalDrag(event)
+      }
+    }
+    const blockContextMenu = (event: MouseEvent) => {
+      if (pipDrag.current || signalDrag.current || Date.now() < suppressContextMenuUntil.current) {
+        event.preventDefault()
+      }
+    }
+
+    document.addEventListener('pointermove', moveActivePointer)
+    document.addEventListener('pointerup', endActivePointer)
+    document.addEventListener('pointercancel', endActivePointer)
+    document.addEventListener('contextmenu', blockContextMenu)
+
+    return () => {
+      document.removeEventListener('pointermove', moveActivePointer)
+      document.removeEventListener('pointerup', endActivePointer)
+      document.removeEventListener('pointercancel', endActivePointer)
+      document.removeEventListener('contextmenu', blockContextMenu)
+    }
+  })
+
+  return (
+    <main className="app-shell" aria-label="RelativityStream interactive simulation">
+      <section className={`immersive-stage ${mainView.variant}`} aria-label={`${mainView.title} full-screen POV`}>
+        <ThreeTreeScene
+          ageTotal={sample.totalEarthTime}
+          localAge={mainView.localAge}
+          streamMode={mainView.streamMode}
+          variant={mainView.variant}
+        />
+        <div className="view-vignette" aria-hidden="true" />
+
+        <header className="mission-bar" aria-labelledby="page-title">
+          <div>
+            <p className="eyebrow">Reality has ping</p>
+            <h1 id="page-title">RelativityStream</h1>
+          </div>
+          <div className="mission-status">
+            <span>{mainView.title} - {phaseLabel(sample.phase)}</span>
+            <strong>{formatTime(mainView.localAge)}</strong>
+          </div>
+        </header>
+
+        <section className="view-card" aria-label={mainView.title}>
+          <p>{mainView.subtitle}</p>
+          <div className="view-stat-row">
+            <span>{mainView.primaryStat}</span>
+            <span>{mainView.secondaryStat}</span>
+            <span>{mainView.note}</span>
+          </div>
+        </section>
+
+        <aside
+          className="pip-panel"
+          style={{
+            height: pipPosition.height,
+            left: pipPosition.left,
+            top: pipPosition.top,
+            width: pipPosition.width,
+          }}
+          aria-label={`${pipView.title} picture in picture`}
+          onPointerDown={startPipInteraction}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <ThreeTreeScene
+            ageTotal={sample.totalEarthTime}
+            localAge={pipView.localAge}
+            streamMode={pipView.streamMode}
+            variant={pipView.variant}
+          />
+          <div className="pip-copy">
+            <span>{pipView.title}</span>
+            <strong>{formatTime(pipView.localAge)}</strong>
+          </div>
+          <span className="resize-corner" aria-hidden="true" />
+        </aside>
+
         <SignalOverlay
           coordinateTime={sample.coordinateTime}
           ghostShipPosition={travelerPositionSeenByEarth}
           outboundDuration={scenario.outboundDuration}
+          position={signalPosition}
           velocity={velocity}
+          onPointerDown={startSignalDrag}
         />
 
-        <StreamView
-          title="Earth view"
-          subtitle={
-            isEarthPov
-              ? 'Local experience'
-              : `Received Earth stream from ${formatTime(earthEmissionSeenByShip)}`
-          }
-          variant="earth"
-          localAge={earthDisplayAge}
-          ageTotal={sample.totalEarthTime}
-          streamMode={isEarthPov ? 'local' : 'received'}
-          primaryStat={`${isEarthPov ? 'Local clock' : 'Received clock'} ${formatTime(earthDisplayAge)}`}
-          secondaryStat={
-            isEarthPov
-              ? `Astronaut stream ${streamRate.toFixed(2)}x`
-              : `Earth signal age ${formatYears(sample.coordinateTime - earthEmissionSeenByShip)}`
-          }
-          note={
-            isEarthPov
-              ? `${hasEarthSeenTurnaround ? 'Turnaround visible' : 'Turnaround not visible yet'}`
-              : 'What the traveler can see from Earth.'
-          }
-        />
-
-        <StreamView
-          title="Traveler view"
-          subtitle={
-            isEarthPov
-              ? `Received traveler stream from ${formatTime(shipEmissionSeenByEarth)}`
-              : 'Local experience'
-          }
-          variant="space"
-          localAge={travelerDisplayAge}
-          ageTotal={treeMaturityYears}
-          streamMode={isEarthPov ? 'received' : 'local'}
-          primaryStat={`${isEarthPov ? 'Received ship clock' : 'Ship clock'} ${formatTime(travelerDisplayAge)}`}
-          secondaryStat={`${travelerDisplayPosition.toFixed(2)} ly from Earth`}
-          note={
-            isEarthPov
-              ? `Signal delay ${formatYears(sample.coordinateTime - shipEmissionSeenByEarth)}`
-              : 'The traveler feels normal locally.'
-          }
-        />
-      </section>
-
-      <section className="control-rail" aria-label="Scenario controls">
-        <div className="rail-controls">
-          <div className="pov-toggle" aria-label="Point of view">
-            <button
-              type="button"
-              aria-pressed={isEarthPov}
-              onClick={() => setPointOfView('earth')}
-            >
-              Earth POV
-            </button>
-            <button
-              type="button"
-              aria-pressed={!isEarthPov}
-              onClick={() => setPointOfView('traveler')}
-            >
-              Traveler POV
-            </button>
-          </div>
-          <button className="play-button" type="button" onClick={playOrPause}>
-            {isPlaying ? 'Pause' : 'Play'}
+        <section className="control-rail" aria-label="Scenario controls" ref={controlsRef}>
+          <button
+            className="play-button"
+            type="button"
+            aria-label={isPlaying ? 'Pause' : 'Play'}
+            onClick={playOrPause}
+          >
+            {isPlaying ? <PauseIcon /> : <PlayIcon />}
           </button>
-          <button className="reset-button" type="button" onClick={resetScenario}>
-            Reset
-          </button>
-          <label className="rail-slider">
-            <span>Timeline</span>
+
+          <label className="timeline-control">
+            <span className="sr-only">Timeline</span>
             <input
               aria-label="Timeline"
               type="range"
@@ -226,232 +437,266 @@ function App() {
             />
             <strong>{formatTime(sample.coordinateTime)} / {formatTime(sample.totalEarthTime)}</strong>
           </label>
-          <div className="speed-control" aria-label="Simulation speed">
-            <span>Speed</span>
-            <div>
-              {simulationSpeeds.map((speed) => (
+
+          <button className="reset-button" type="button" onClick={resetScenario}>
+            Reset
+          </button>
+
+          <PopoverButton
+            active={activeMenu === 'speed'}
+            icon={<ClockIcon />}
+            label={`${simulationSpeed}x`}
+            onClick={() => setActiveMenu(activeMenu === 'speed' ? null : 'speed')}
+          >
+            <div className="option-grid" aria-label="Simulation speed">
+              {SIMULATION_SPEED_OPTIONS.map((speed) => (
                 <button
                   key={speed}
                   type="button"
                   aria-pressed={simulationSpeed === speed}
-                  onClick={() => setSimulationSpeed(speed)}
+                  onClick={() => {
+                    setSimulationSpeed(speed)
+                    setActiveMenu(null)
+                  }}
                 >
                   {speed}x
                 </button>
               ))}
             </div>
-          </div>
-          <label className="rail-slider compact">
-            <span>Velocity</span>
-            <input
-              aria-label="Velocity"
-              type="range"
-              min={minVelocity}
-              max={maxVelocity}
-              step="0.01"
-              value={velocity}
-              onChange={(event) => {
-                changeVelocity(Number(event.target.value))
-              }}
-            />
-            <strong>{velocity.toFixed(2)} c</strong>
-          </label>
-          <label className="rail-slider compact">
-            <span>Turnaround distance</span>
-            <input
-              aria-label="Turnaround distance"
-              type="range"
-              min={minTurnaroundDistance}
-              max={maxTurnaroundDistance}
-              step="0.1"
-              value={turnaroundDistance}
-              onChange={(event) => {
-                changeTurnaroundDistance(Number(event.target.value))
-              }}
-            />
-            <strong>{turnaroundDistance.toFixed(1)} ly</strong>
-          </label>
-        </div>
+          </PopoverButton>
 
-        <dl className="clock-strip" aria-label="Clock comparison">
-          <div>
-            <dt>Earth reunion</dt>
-            <dd>{formatTime(sample.totalEarthTime)}</dd>
-          </div>
-          <div>
-            <dt>Traveler reunion</dt>
-            <dd>{formatTime(sample.totalShipProperTime)}</dd>
-          </div>
-          <div>
-            <dt>Clock gap</dt>
-            <dd>{formatTime(sample.totalEarthTime - sample.totalShipProperTime)}</dd>
-          </div>
-        </dl>
+          <PopoverButton
+            active={activeMenu === 'velocity'}
+            icon={<VelocityIcon />}
+            label={`${velocity.toFixed(2)} c`}
+            onClick={() => setActiveMenu(activeMenu === 'velocity' ? null : 'velocity')}
+          >
+            <NumericSlider
+              label="Velocity"
+              max={MAX_VELOCITY_FRACTION_OF_C}
+              min={MIN_VELOCITY_FRACTION_OF_C}
+              onChange={changeVelocity}
+              onDismiss={() => setActiveMenu(null)}
+              step={0.01}
+              suffix="c"
+              value={velocity}
+            />
+          </PopoverButton>
+
+          <PopoverButton
+            active={activeMenu === 'distance'}
+            icon={<DistanceIcon />}
+            label={`${turnaroundDistance.toFixed(1)} ly`}
+            onClick={() => setActiveMenu(activeMenu === 'distance' ? null : 'distance')}
+          >
+            <NumericSlider
+              label="Turnaround distance"
+              max={MAX_TURNAROUND_DISTANCE_LY}
+              min={MIN_TURNAROUND_DISTANCE_LY}
+              onChange={changeTurnaroundDistance}
+              onDismiss={() => setActiveMenu(null)}
+              step={0.1}
+              suffix="ly"
+              value={turnaroundDistance}
+            />
+          </PopoverButton>
+        </section>
       </section>
     </main>
   )
 }
 
-type StreamViewProps = {
-  title: string
-  subtitle: string
-  variant: 'earth' | 'space'
-  localAge: number
-  ageTotal: number
-  primaryStat: string
-  secondaryStat: string
-  note: string
-  streamMode: 'local' | 'received'
+type ViewModelInputs = {
+  earthEmissionSeenByShip: number
+  hasEarthSeenTurnaround: boolean
+  sample: ReturnType<typeof sampleScenario>
+  shipEmissionSeenByEarth: number
+  streamRate: number
+  travelerAgeSeenByEarth: number
+  travelerPositionSeenByEarth: number
 }
 
-function StreamView({
-  title,
-  subtitle,
-  variant,
-  localAge,
-  ageTotal,
-  primaryStat,
-  secondaryStat,
-  note,
-  streamMode,
-}: StreamViewProps) {
-  const growth = Math.min(1, Math.max(0.04, localAge / ageTotal))
+function getViewModel(pointOfView: PointOfView, inputs: ViewModelInputs) {
+  const { earthEmissionSeenByShip, hasEarthSeenTurnaround, sample, streamRate, travelerAgeSeenByEarth, travelerPositionSeenByEarth } = inputs
+
+  if (pointOfView === 'earth') {
+    return {
+      localAge: sample.earthElapsedTime,
+      note: hasEarthSeenTurnaround ? 'Turnaround visible' : 'Turnaround not visible yet',
+      primaryStat: `Local clock ${formatTime(sample.earthElapsedTime)}`,
+      secondaryStat: `Received ship ${formatTime(travelerAgeSeenByEarth)} at ${travelerPositionSeenByEarth.toFixed(2)} ly, ${streamRate.toFixed(2)}x`,
+      streamMode: 'local' as const,
+      subtitle: 'Earth local experience',
+      title: 'Earth POV',
+      variant: 'earth' as const,
+    }
+  }
+
+  return {
+    localAge: sample.shipProperTime,
+    note: 'The traveler feels normal locally.',
+    primaryStat: `Ship clock ${formatTime(sample.shipProperTime)}`,
+    secondaryStat: `${sample.shipPosition.toFixed(2)} ly from Earth`,
+    streamMode: 'local' as const,
+    subtitle: `Received Earth stream from ${formatTime(earthEmissionSeenByShip)}`,
+    title: 'Traveler POV',
+    variant: 'space' as const,
+  }
+}
+
+function getReceivedViewModel(pointOfView: PointOfView, inputs: Omit<ViewModelInputs, 'hasEarthSeenTurnaround'>) {
+  const { earthEmissionSeenByShip, sample, shipEmissionSeenByEarth, streamRate, travelerAgeSeenByEarth, travelerPositionSeenByEarth } = inputs
+
+  if (pointOfView === 'traveler') {
+    return {
+      localAge: travelerAgeSeenByEarth,
+      note: `Signal delay ${formatTime(sample.coordinateTime - shipEmissionSeenByEarth)}`,
+      primaryStat: `Received ship clock ${formatTime(travelerAgeSeenByEarth)}`,
+      secondaryStat: `${travelerPositionSeenByEarth.toFixed(2)} ly from Earth, ${streamRate.toFixed(2)}x`,
+      streamMode: 'received' as const,
+      subtitle: `Received traveler stream at Earth`,
+      title: 'Traveler POV',
+      variant: 'space' as const,
+    }
+  }
+
+  return {
+    localAge: earthEmissionSeenByShip,
+    note: `Earth signal age ${formatTime(sample.coordinateTime - earthEmissionSeenByShip)}`,
+    primaryStat: `Received Earth clock ${formatTime(earthEmissionSeenByShip)}`,
+    secondaryStat: 'What the traveler can see from Earth.',
+    streamMode: 'received' as const,
+    subtitle: `Received Earth stream from ${formatTime(earthEmissionSeenByShip)}`,
+    title: 'Earth POV',
+    variant: 'earth' as const,
+  }
+}
+
+type PopoverButtonProps = {
+  active: boolean
+  children: ReactNode
+  icon: ReactNode
+  label: string
+  onClick: () => void
+}
+
+function PopoverButton({ active, children, icon, label, onClick }: PopoverButtonProps) {
+  return (
+    <div className="control-popover">
+      <button
+        className="popover-trigger"
+        type="button"
+        aria-expanded={active}
+        onClick={onClick}
+      >
+        {icon}
+        <span>{label}</span>
+      </button>
+      {active ? <div className="popover-panel">{children}</div> : null}
+    </div>
+  )
+}
+
+type NumericSliderProps = {
+  label: string
+  max: number
+  min: number
+  onChange: (value: number) => void
+  onDismiss: () => void
+  step: number
+  suffix: string
+  value: number
+}
+
+function NumericSlider({ label, max, min, onChange, onDismiss, step, suffix, value }: NumericSliderProps) {
+  const [draftValue, setDraftValue] = useState(formatInputValue(value, step))
+  const latestDraft = useRef(draftValue)
+  const latestValue = useRef(value)
+
+  useEffect(() => {
+    latestValue.current = value
+  }, [value])
+
+  const updateDraft = (nextDraft: string) => {
+    latestDraft.current = nextDraft
+    setDraftValue(nextDraft)
+  }
+
+  const commitDraft = () => {
+    const parsed = parseDraftNumber(draftValue, min, max)
+    if (!parsed.valid) {
+      const formattedValue = formatInputValue(latestValue.current, step)
+      updateDraft(formattedValue)
+      return false
+    }
+
+    onChange(parsed.value)
+    updateDraft(formatInputValue(parsed.value, step))
+    return true
+  }
+
+  const revertDraft = () => {
+    updateDraft(formatInputValue(latestValue.current, step))
+  }
 
   return (
-    <article className={`stream-view ${variant}`} aria-label={title}>
-      <div className="stream-copy">
-        <div>
-          <p>{title}</p>
-          <span>{subtitle}</span>
-        </div>
-        <div className="stream-clock">
-          <small>{streamMode === 'local' ? 'local now' : 'received'}</small>
-          <strong>{formatTime(localAge)}</strong>
-        </div>
-      </div>
+    <label className="numeric-slider">
+      <span>{label}</span>
+      <input
+        aria-label={label}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => {
+          const nextValue = Number(event.target.value)
+          onChange(nextValue)
+          updateDraft(formatInputValue(nextValue, step))
+        }}
+      />
+      <div className="number-entry">
+        <input
+          aria-label={`${label} value`}
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={draftValue}
+          onBlur={commitDraft}
+          onChange={(event) => updateDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && commitDraft()) {
+              onDismiss()
+            }
 
-      <div className="scene-window">
-        <TreeScene
-          growth={growth}
-          localAge={localAge}
-          variant={variant}
+            if (event.key === 'Escape') {
+              revertDraft()
+              onDismiss()
+            }
+          }}
         />
+        <span>{suffix}</span>
       </div>
-
-      <div className="stream-telemetry">
-        <span>{primaryStat}</span>
-        <span>{secondaryStat}</span>
-        <span>{note}</span>
-      </div>
-    </article>
-  )
-}
-
-type TreeSceneProps = {
-  growth: number
-  localAge: number
-  variant: 'earth' | 'space'
-}
-
-function TreeScene({ growth, localAge, variant }: TreeSceneProps) {
-  const trunkHeight = 54 + growth * 132
-  const trunkWidth = 10 + growth * 18
-  const canopyRadius = 16 + growth * 58
-  const rootY = 252
-  const trunkTopY = rootY - trunkHeight
-  const leafOpacity = Math.min(1, growth * 1.35)
-  return (
-    <svg
-      className="tree-scene"
-      viewBox="0 0 520 300"
-      role="img"
-      aria-label={`${variant === 'earth' ? 'Earth' : 'Traveler'} tree aged to ${formatTime(localAge)}`}
-    >
-      <defs>
-        <radialGradient id={`${variant}-skyGlow`} cx="50%" cy="18%" r="70%">
-          <stop offset="0%" stopColor={variant === 'earth' ? '#8fd3ff' : '#4761ff'} />
-          <stop offset="100%" stopColor={variant === 'earth' ? '#13243a' : '#050816'} />
-        </radialGradient>
-        <linearGradient id={`${variant}-trunk`} x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0%" stopColor="#c89555" />
-          <stop offset="100%" stopColor="#6f4329" />
-        </linearGradient>
-      </defs>
-
-      <rect className="scene-bg" width="520" height="300" fill={`url(#${variant}-skyGlow)`} />
-      {variant === 'earth' ? <EarthBackdrop /> : <SpaceBackdrop />}
-
-      <line className="tree-ground" x1="54" x2="466" y1={rootY} y2={rootY} />
-      <path
-        className="tree-root"
-        d={`M 260 ${rootY - 6} C 230 ${rootY + 5}, 198 ${rootY + 8}, 164 ${rootY + 2}`}
-      />
-      <path
-        className="tree-root"
-        d={`M 260 ${rootY - 6} C 292 ${rootY + 6}, 326 ${rootY + 8}, 370 ${rootY + 1}`}
-      />
-      <rect
-        className="tree-trunk"
-        x={260 - trunkWidth / 2}
-        y={trunkTopY}
-        width={trunkWidth}
-        height={trunkHeight}
-        rx={trunkWidth / 2}
-        fill={`url(#${variant}-trunk)`}
-      />
-      <path
-        className="tree-branch"
-        d={`M 260 ${trunkTopY + trunkHeight * 0.42} C ${232 - growth * 18} ${trunkTopY + 42}, ${214 - growth * 24} ${trunkTopY + 34}, ${190 - growth * 26} ${trunkTopY + 18}`}
-      />
-      <path
-        className="tree-branch"
-        d={`M 262 ${trunkTopY + trunkHeight * 0.34} C ${296 + growth * 20} ${trunkTopY + 34}, ${322 + growth * 24} ${trunkTopY + 18}, ${350 + growth * 28} ${trunkTopY + 2}`}
-      />
-      <circle className="canopy main" cx="260" cy={trunkTopY - 8} r={canopyRadius} opacity={leafOpacity} />
-      <circle className="canopy side" cx={218 - growth * 18} cy={trunkTopY + 22} r={canopyRadius * 0.72} opacity={leafOpacity} />
-      <circle className="canopy side" cx={302 + growth * 18} cy={trunkTopY + 20} r={canopyRadius * 0.76} opacity={leafOpacity} />
-      <circle className="canopy glow" cx="260" cy={trunkTopY - 8} r={canopyRadius + 14} opacity={leafOpacity * 0.35} />
-    </svg>
-  )
-}
-
-function EarthBackdrop() {
-  return (
-    <>
-      <circle className="sun-glow" cx="438" cy="62" r="34" />
-      <path className="horizon" d="M 0 220 C 120 188, 250 205, 520 172 L 520 300 L 0 300 Z" />
-      <path className="city-line" d="M 62 218 L 62 188 L 88 188 L 88 214 L 112 214 L 112 176 L 136 176 L 136 216 L 170 216 L 170 196 L 190 196 L 190 218" />
-      <path className="signal-dish" d="M 398 226 L 422 194 M 424 194 C 392 188, 383 165, 392 146 C 421 153, 438 172, 424 194" />
-    </>
-  )
-}
-
-function SpaceBackdrop() {
-  return (
-    <>
-      <circle className="star big" cx="70" cy="52" r="2" />
-      <circle className="star" cx="118" cy="96" r="1.4" />
-      <circle className="star" cx="194" cy="42" r="1.6" />
-      <circle className="star" cx="396" cy="72" r="1.8" />
-      <circle className="star" cx="458" cy="118" r="1.2" />
-      <circle className="planet" cx="414" cy="207" r="54" />
-      <path className="orbit-ring" d="M 326 210 C 366 176, 446 172, 492 202" />
-      <path className="ship-platform" d="M 88 238 L 432 238 L 468 268 L 52 268 Z" />
-    </>
+    </label>
   )
 }
 
 type SignalOverlayProps = {
   coordinateTime: number
   ghostShipPosition: number
+  onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void
   outboundDuration: number
+  position: PanelPosition
   velocity: number
 }
 
 function SignalOverlay({
   coordinateTime,
   ghostShipPosition,
+  onPointerDown,
   outboundDuration,
+  position,
   velocity,
 }: SignalOverlayProps) {
   const width = 760
@@ -463,9 +708,9 @@ function SignalOverlay({
   const bottomY = height - 28
   const maxDistance = velocity * outboundDuration
   const timeToY = (time: number) => topY + (time / totalTime) * (bottomY - topY)
-  const positionToX = (position: number) =>
-    earthX + (position / Math.max(maxDistance, 1)) * (farX - earthX)
-  const shipPosition =
+  const positionToX = (shipDistance: number) =>
+    earthX + (shipDistance / Math.max(maxDistance, 1)) * (farX - earthX)
+  const shipDistance =
     coordinateTime <= outboundDuration
       ? velocity * coordinateTime
       : Math.max(0, maxDistance - velocity * (coordinateTime - outboundDuration))
@@ -486,23 +731,26 @@ function SignalOverlay({
   ))
 
   return (
-    <aside className="signal-overlay" aria-label="Signal propagation view">
+    <aside
+      className="signal-overlay"
+      style={{
+        left: position.left,
+        top: position.top,
+        width: position.width,
+      }}
+      aria-label="Signal propagation view"
+      onPointerDown={onPointerDown}
+      onContextMenu={(event) => event.preventDefault()}
+    >
       <div className="overlay-heading">
         <p>Signal propagation</p>
-        <button
-          className="info-button"
-          type="button"
-          aria-label="How to read signal propagation"
-          title="Down is later Earth-coordinate time. Right is farther from Earth. Orange diagonals are ship motion; red pulses are light signals moving back toward Earth."
-        >
-          i
-        </button>
+        <span>drag</span>
       </div>
       <svg
         className="overlay-diagram"
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label="Compact signal propagation diagram over the simulated streams"
+        aria-label="Compact signal propagation diagram over the simulated stream"
       >
         <line className="overlay-axis" x1={earthX} y1={topY} x2={earthX} y2={bottomY} />
         <line className="overlay-distance-axis" x1={earthX} y1={bottomY} x2={farX} y2={bottomY} />
@@ -548,14 +796,9 @@ function SignalOverlay({
             </g>
           )
         })}
-        <circle
-          className="overlay-ghost-ship"
-          cx={ghostShipX}
-          cy={currentY}
-          r="12"
-        />
+        <circle className="overlay-ghost-ship" cx={ghostShipX} cy={currentY} r="12" />
         <circle className="overlay-earth" cx={earthX} cy={currentY} r="7" />
-        <circle className="overlay-ship" cx={positionToX(shipPosition)} cy={currentY} r="8" />
+        <circle className="overlay-ship" cx={positionToX(shipDistance)} cy={currentY} r="8" />
         <text className="overlay-label" x={earthX + 10} y={topY + 12}>Earth</text>
         <text className="overlay-label" x={farX - 70} y={timeToY(outboundDuration) - 8}>turn</text>
         <text className="overlay-hint vertical" x={earthX - 30} y={(topY + bottomY) / 2}>later</text>
@@ -565,12 +808,81 @@ function SignalOverlay({
   )
 }
 
-function formatTime(value: number): string {
-  return `${value.toFixed(1)} y`
+function PlayIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  )
 }
 
-function formatYears(value: number): string {
-  return `${value.toFixed(2)} years`
+function PauseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 5h4v14H7zM13 5h4v14h-4z" />
+    </svg>
+  )
+}
+
+function ClockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v5l3 2" />
+    </svg>
+  )
+}
+
+function VelocityIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 14h9" />
+      <path d="M10 7l7 5-7 5" />
+      <path d="M4 10h5" />
+    </svg>
+  )
+}
+
+function DistanceIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 12h14" />
+      <path d="M7 9l-3 3 3 3" />
+      <path d="M17 9l3 3-3 3" />
+    </svg>
+  )
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min
+  }
+
+  return Math.min(max, Math.max(min, value))
+}
+
+function parseDraftNumber(value: string, min: number, max: number) {
+  const parsed = Number(value)
+
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    return { valid: false as const, value: min }
+  }
+
+  return { valid: true as const, value: parsed }
+}
+
+function formatInputValue(value: number, step: number): string {
+  if (step >= 1) {
+    return value.toFixed(0)
+  }
+
+  const decimals = Math.max(0, Math.ceil(Math.abs(Math.log10(step))))
+
+  return value.toFixed(decimals)
+}
+
+function formatTime(value: number): string {
+  return `${value.toFixed(1)} y`
 }
 
 function phaseLabel(phase: string): string {

@@ -34,6 +34,13 @@ body {
   box-sizing: border-box;
 }
 
+body.dragging-pip,
+body.dragging-pip * {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grabbing;
+}
+
 h1 {
   color: var(--text-strong);
   font-size: clamp(44px, 7vw, 84px);
