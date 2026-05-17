@@ -707,9 +707,10 @@ function SignalOverlay({
   const topY = 32
   const bottomY = height - 28
   const maxDistance = velocity * outboundDuration
+  const distanceScale = Math.max(maxDistance, Number.EPSILON)
   const timeToY = (time: number) => topY + (time / totalTime) * (bottomY - topY)
   const positionToX = (shipDistance: number) =>
-    earthX + (shipDistance / Math.max(maxDistance, 1)) * (farX - earthX)
+    earthX + (shipDistance / distanceScale) * (farX - earthX)
   const shipDistance =
     coordinateTime <= outboundDuration
       ? velocity * coordinateTime

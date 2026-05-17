@@ -95,3 +95,35 @@ test('opens and drives the full-screen RelativityStream POV view', async ({ page
 
   expect(consoleErrors).toEqual([])
 })
+
+test('keeps the signal overlay ship marker aligned for low-speed short-distance scenarios', async ({ page }) => {
+  const consoleErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      consoleErrors.push(message.text())
+    }
+  })
+
+  await page.goto('/')
+
+  await page.getByRole('button', { name: '0.90 c' }).click()
+  await page.getByRole('spinbutton', { name: 'Velocity value' }).fill('0.01')
+  await page.getByRole('spinbutton', { name: 'Velocity value' }).press('Enter')
+  await page.getByRole('button', { name: '100.0 ly' }).click()
+  await page.getByRole('spinbutton', { name: 'Turnaround distance value' }).fill('0.5')
+  await page.getByRole('spinbutton', { name: 'Turnaround distance value' }).press('Enter')
+  await page.getByRole('slider', { name: 'Timeline' }).fill('50')
+
+  await expect(page.getByText('50.0 y / 100.0 y')).toBeVisible()
+  const lowSpeedOverlay = await page.locator('.signal-overlay').evaluate((overlay) => {
+    const ship = overlay.querySelector('.overlay-ship')
+    const turn = Array.from(overlay.querySelectorAll('text')).find((node) => node.textContent === 'turn')
+
+    return {
+      shipCx: Number(ship?.getAttribute('cx')),
+      turnX: Number(turn?.getAttribute('x')),
+    }
+  })
+  expect(lowSpeedOverlay.shipCx).toBeCloseTo(lowSpeedOverlay.turnX + 70)
+  expect(consoleErrors).toEqual([])
+})

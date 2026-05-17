@@ -167,4 +167,28 @@ describe('App', () => {
 
     expect(screen.getByText('turnaround signal')).toBeInTheDocument()
   })
+
+  it('draws the ship at the diagram turn point for low-speed short-distance scenarios', () => {
+    const { container } = render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: '0.90 c' }))
+    fireEvent.change(screen.getByRole('slider', { name: 'Velocity' }), {
+      target: { value: '0.01' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '100.0 ly' }))
+    fireEvent.change(screen.getByRole('slider', { name: 'Turnaround distance' }), {
+      target: { value: '0.5' },
+    })
+    fireEvent.change(screen.getByRole('slider', { name: 'Timeline' }), {
+      target: { value: '50' },
+    })
+
+    const shipMarker = container.querySelector('.overlay-ship')
+    const turnLabel = screen.getByText('turn')
+
+    expect(shipMarker).not.toBeNull()
+    expect(Number(shipMarker?.getAttribute('cx'))).toBeCloseTo(
+      Number(turnLabel.getAttribute('x')) + 70,
+    )
+  })
 })
