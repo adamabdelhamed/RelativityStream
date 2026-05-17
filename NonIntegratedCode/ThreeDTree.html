@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tree Lifecycle — 150 Year Browser Animation</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.164.1/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.164.1/examples/jsm/"
+      }
+    }
+  </script>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #05070b; font-family: Inter, ui-sans-serif, system-ui, Segoe UI, Arial, sans-serif; }
+    #app { width: 100%; height: 100%; position: fixed; inset: 0; }
+    .hud {
+      position: fixed; left: 22px; bottom: 22px; color: rgba(255,255,255,.86); z-index: 5;
+      padding: 16px 18px; border: 1px solid rgba(255,255,255,.14); border-radius: 18px;
+      background: linear-gradient(145deg, rgba(8,12,18,.55), rgba(20,32,24,.28)); backdrop-filter: blur(14px);
+      box-shadow: 0 18px 60px rgba(0,0,0,.34); min-width: 300px;
+    }
+    .title { font-size: 14px; letter-spacing: .18em; text-transform: uppercase; opacity: .92; }
+    .sub { font-size: 12px; opacity: .64; margin-top: 6px; line-height: 1.35; max-width: 380px; }
+    .time { font-size: 12px; opacity: .84; margin-top: 11px; letter-spacing: .04em; }
+    .bar { height: 6px; border-radius: 99px; background: rgba(255,255,255,.12); overflow: hidden; margin-top: 8px; }
+    .fill { height: 100%; width: 0%; border-radius: inherit; background: linear-gradient(90deg, #86efac, #fde68a, #d6a15f); box-shadow: 0 0 24px rgba(134,239,172,.42); }
+    .btns { margin-top: 13px; display: flex; gap: 8px; }
+    button {
+      border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.08); color: rgba(255,255,255,.9);
+      border-radius: 12px; padding: 8px 11px; cursor: pointer; font-weight: 650;
+    }
+    button:hover { background: rgba(255,255,255,.14); }
+    .hint { position: fixed; right: 22px; top: 18px; color: rgba(255,255,255,.52); font-size: 12px; z-index: 5; text-align: right; line-height: 1.35; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div class="hint">Drag or wheel to take over camera<br/>Space toggles pause • R restarts</div>
+  <div class="hud">
+    <div class="title">150 Year Tree Lifecycle</div>
+    <div class="sub">A procedural tree grows for 50 simulated years, drops its leaves, wilts into dust by year 70, then the remaining dust fades before the next sprout at year 75.</div>
+    <div class="time" id="timeLabel">Year 0 / 150</div>
+    <div class="bar"><div class="fill" id="fill"></div></div>
+    <div class="btns"><button id="restart">Restart</button><button id="pause">Pause</button></div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const SIMULATION_YEARS = 150;
+    const TREE_CYCLE_YEARS = 75;
+    const FULL_GROWTH_YEARS = 50;
+    const DECAY_YEARS = 25;
+    const ANIMATION_SECONDS = 30;
+
+    const container = document.getElementById('app');
+    const fill = document.getElementById('fill');
+    const timeLabel = document.getElementById('timeLabel');
+    const restartButton = document.getElementById('restart');
+    const pauseButton = document.getElementById('pause');
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.12;
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x07110d, 0.034);
+
+    const camera = new THREE.PerspectiveCamera(48, innerWidth / innerHeight, 0.03, 250);
+    const initialCameraPosition = new THREE.Vector3(3.15, 1.65, 4.15);
+    const initialCameraTarget = new THREE.Vector3(0, .52, 0);
+    camera.position.copy(initialCameraPosition);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.055;
+    controls.target.copy(initialCameraTarget);
+    controls.maxPolarAngle = Math.PI * 0.49;
+    controls.minDistance = 2.4;
+    controls.maxDistance = 14.5;
+
+    const clock = new THREE.Clock();
+    const world = new THREE.Group();
+    scene.add(world);
+
+    const hemi = new THREE.HemisphereLight(0xbfeaff, 0x2d1608, 1.1);
+    scene.add(hemi);
+
+    const sun = new THREE.DirectionalLight(0xffdd9d, 4.3);
+    sun.position.set(-6, 9, 5);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 0.1;
+    sun.shadow.camera.far = 42;
+    sun.shadow.camera.left = -13;
+    sun.shadow.camera.right = 13;
+    sun.shadow.camera.top = 13;
+    sun.shadow.camera.bottom = -13;
+    scene.add(sun);
+
+    const rim = new THREE.DirectionalLight(0x77b8ff, 1.35);
+    rim.position.set(7, 4, -9);
+    scene.add(rim);
+
+    const seedGlow = new THREE.PointLight(0x8eff9d, 4, 8, 2.3);
+    seedGlow.position.set(0, .14, 0);
+    scene.add(seedGlow);
+
+    const skyCanvas = document.createElement('canvas');
+    skyCanvas.width = 32;
+    skyCanvas.height = 512;
+    const skyCtx = skyCanvas.getContext('2d');
+    const grad = skyCtx.createLinearGradient(0, 0, 0, skyCanvas.height);
+    grad.addColorStop(0, '#101b3a');
+    grad.addColorStop(.42, '#29436b');
+    grad.addColorStop(.72, '#c68a5a');
+    grad.addColorStop(1, '#17130b');
+    skyCtx.fillStyle = grad;
+    skyCtx.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
+    const skyTex = new THREE.CanvasTexture(skyCanvas);
+    skyTex.colorSpace = THREE.SRGBColorSpace;
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(115, 64, 32), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide }));
+    scene.add(sky);
+
+    function smoother(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+    function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+    function growWindow(t, start, end) { return smoother(clamp01((t - start) / (end - start))); }
+    function phaseAtLocalYear(localYear) {
+      const growth = clamp01(localYear / FULL_GROWTH_YEARS);
+      const leafFall = growWindow(localYear, FULL_GROWTH_YEARS, 62);
+      const branchWilt = growWindow(localYear, FULL_GROWTH_YEARS, 68);
+      const dustBuild = growWindow(localYear, 56, 70);
+      const dustFade = growWindow(localYear, 70, TREE_CYCLE_YEARS);
+      const structureOpacity = 1 - growWindow(localYear, 62, 70);
+      const dustOpacity = dustBuild * (1 - dustFade);
+      const decay = growWindow(localYear, FULL_GROWTH_YEARS, TREE_CYCLE_YEARS);
+      return { growth, decay, leafFall, branchWilt, dustBuild, dustFade, structureOpacity, dustOpacity, survival: structureOpacity, isAliveOrDecaying: localYear >= 0 && localYear < TREE_CYCLE_YEARS };
+    }
+
+    function makeRadialTexture(size, stops) {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+      stops.forEach(s => g.addColorStop(s[0], s[1]));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, size, size);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    function makeLeafTexture() {
+      const c = document.createElement('canvas');
+      c.width = c.height = 128;
+      const ctx = c.getContext('2d');
+      ctx.clearRect(0, 0, 128, 128);
+      ctx.translate(64, 66);
+      const leaf = ctx.createLinearGradient(-40, -38, 42, 38);
+      leaf.addColorStop(0, '#a7f36b');
+      leaf.addColorStop(.48, '#45a83f');
+      leaf.addColorStop(1, '#146b36');
+      ctx.fillStyle = leaf;
+      ctx.beginPath();
+      ctx.moveTo(0, -54);
+      ctx.bezierCurveTo(47, -34, 49, 24, 0, 55);
+      ctx.bezierCurveTo(-49, 24, -47, -34, 0, -54);
+      ctx.fill();
+      ctx.globalAlpha = .55;
+      ctx.strokeStyle = '#e8ffd0';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.moveTo(0, -44);
+      ctx.quadraticCurveTo(2, -2, 0, 48);
+      ctx.stroke();
+      ctx.lineWidth = 1.25;
+      for (let i = -4; i <= 4; i++) {
+        if (i === 0) continue;
+        ctx.beginPath();
+        ctx.moveTo(0, i * 8);
+        ctx.quadraticCurveTo(i * 9, i * 8 + 7, i * 12, i * 12 + 10);
+        ctx.stroke();
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    function makeBarkTexture() {
+      const c = document.createElement('canvas');
+      c.width = 512;
+      c.height = 512;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#5b351f';
+      ctx.fillRect(0, 0, 512, 512);
+      for (let x = 0; x < 512; x += 6) {
+        const shade = 45 + Math.random() * 85;
+        ctx.strokeStyle = `rgba(${shade + 32},${shade * .72},${shade * .45},${.08 + Math.random() * .14})`;
+        ctx.lineWidth = 1 + Math.random() * 4;
+        ctx.beginPath();
+        let y = -20;
+        ctx.moveTo(x + Math.random() * 10, y);
+        while (y < 540) {
+          y += 18 + Math.random() * 28;
+          ctx.lineTo(x + Math.sin(y * .035 + x) * (7 + Math.random() * 8), y);
+        }
+        ctx.stroke();
+      }
+      for (let i = 0; i < 1200; i++) {
+        const x = Math.random() * 512, y = Math.random() * 512;
+        ctx.fillStyle = Math.random() > .55 ? 'rgba(31,19,11,.23)' : 'rgba(209,147,77,.12)';
+        ctx.fillRect(x, y, 1 + Math.random() * 4, 1 + Math.random() * 9);
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(2.5, 6);
+      return tex;
+    }
+
+    function makeTreeMaterials() {
+      const barkTexture = makeBarkTexture();
+      const sproutColor = new THREE.Color(0x78b957);
+      const softWoodColor = new THREE.Color(0x8a6439);
+      const matureWoodColor = new THREE.Color(0x7a4729);
+      const deadWoodColor = new THREE.Color(0x6b5a48);
+      const leafDeadColor = new THREE.Color(0x8c5a24);
+      const materials = {
+        sproutColor,
+        softWoodColor,
+        matureWoodColor,
+        deadWoodColor,
+        leafDeadColor,
+        barkMat: new THREE.MeshStandardMaterial({ map: barkTexture, color: matureWoodColor.clone(), roughness: .9, metalness: 0.0, transparent: true }),
+        trunkMat: new THREE.MeshStandardMaterial({ map: barkTexture, color: sproutColor.clone(), roughness: .78, metalness: 0.0, transparent: true }),
+        youngBarkMat: new THREE.MeshStandardMaterial({ color: 0x6f8f42, roughness: .76, metalness: 0.0, transparent: true }),
+        rootMat: new THREE.MeshStandardMaterial({ color: 0x4a2b18, roughness: .92, metalness: 0.0, transparent: true }),
+        branchTipMat: new THREE.MeshStandardMaterial({ color: 0xbadf79, roughness: .8, transparent: true }),
+        flowerMat: new THREE.MeshStandardMaterial({ color: 0xffb7c5, emissive: 0x2a0612, roughness: .54, transparent: true })
+      };
+      materials.branchMaterials = [materials.barkMat, materials.trunkMat, materials.youngBarkMat, materials.rootMat, materials.branchTipMat, materials.flowerMat];
+      return materials;
+    }
+
+    function setMaterialOpacity(mat, opacity) {
+      mat.opacity = clamp01(opacity);
+      mat.transparent = mat.opacity < .999;
+      mat.depthWrite = mat.opacity > .72;
+    }
+
+    const leafTexture = makeLeafTexture();
+    const baseLeafMat = new THREE.MeshStandardMaterial({ map: leafTexture, alphaTest: .22, transparent: true, side: THREE.DoubleSide, roughness: .78, metalness: 0.0 });
+    const seedMat = new THREE.MeshStandardMaterial({ color: 0x2e1a0c, roughness: .85, transparent: true });
+
+    const groundTexture = makeRadialTexture(512, [[0, '#5f5636'], [.42, '#252c16'], [.72, '#10160e'], [1, '#070907']]);
+    groundTexture.colorSpace = THREE.SRGBColorSpace;
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshStandardMaterial({ map: groundTexture, roughness: .95, metalness: 0 }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    world.add(ground);
+
+    const soil = new THREE.Mesh(new THREE.CylinderGeometry(1.22, 1.75, .32, 96), new THREE.MeshStandardMaterial({ color: 0x24170e, roughness: .92 }));
+    soil.position.y = .02;
+    soil.castShadow = soil.receiveShadow = true;
+    world.add(soil);
+
+    const leafGeo = new THREE.PlaneGeometry(.42, .74, 5, 8);
+    leafGeo.translate(0, .22, 0);
+
+    function branchDirection(angle, elevation, twist) {
+      return new THREE.Vector3(Math.cos(angle) * Math.cos(elevation), Math.sin(elevation), Math.sin(angle) * Math.cos(elevation)).applyAxisAngle(new THREE.Vector3(0, 1, 0), twist).normalize();
+    }
+
+    function createCappedTaperedTubeGeometry(curve, tubularSegments, radiusStart, radiusEnd, radialSegments) {
+      const frames = curve.computeFrenetFrames(tubularSegments, false);
+      const positions = [];
+      const uvs = [];
+      const indices = [];
+
+      for (let i = 0; i <= tubularSegments; i++) {
+        const t = i / tubularSegments;
+        const point = curve.getPoint(t);
+        const radius = THREE.MathUtils.lerp(radiusStart, radiusEnd, smoother(t));
+        const normal = frames.normals[i];
+        const binormal = frames.binormals[i];
+
+        for (let j = 0; j < radialSegments; j++) {
+          const angle = j / radialSegments * Math.PI * 2;
+          const x = Math.cos(angle);
+          const y = Math.sin(angle);
+          positions.push(point.x + radius * (x * normal.x + y * binormal.x), point.y + radius * (x * normal.y + y * binormal.y), point.z + radius * (x * normal.z + y * binormal.z));
+          uvs.push(j / radialSegments, t);
+        }
+      }
+
+      for (let i = 0; i < tubularSegments; i++) {
+        for (let j = 0; j < radialSegments; j++) {
+          const a = i * radialSegments + j;
+          const b = i * radialSegments + (j + 1) % radialSegments;
+          const c = (i + 1) * radialSegments + (j + 1) % radialSegments;
+          const d = (i + 1) * radialSegments + j;
+          indices.push(a, d, b, b, d, c);
+        }
+      }
+
+      const startCenterIndex = positions.length / 3;
+      const startPoint = curve.getPoint(0);
+      positions.push(startPoint.x, startPoint.y, startPoint.z);
+      uvs.push(.5, .5);
+      for (let j = 0; j < radialSegments; j++) indices.push(startCenterIndex, (j + 1) % radialSegments, j);
+
+      const endCenterIndex = positions.length / 3;
+      const endPoint = curve.getPoint(1);
+      positions.push(endPoint.x, endPoint.y, endPoint.z);
+      uvs.push(.5, .5);
+      const endRingStart = tubularSegments * radialSegments;
+      for (let j = 0; j < radialSegments; j++) indices.push(endCenterIndex, endRingStart + j, endRingStart + (j + 1) % radialSegments);
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      geo.setIndex(indices);
+      geo.computeVertexNormals();
+      geo.userData.hasEndCaps = true;
+      geo.userData.isTaperedTube = Math.abs(radiusStart - radiusEnd) > .00001;
+      return geo;
+    }
+
+    function createDecayParticleSystem(tree, count) {
+      const sourcePoints = [];
+      for (const b of tree.branches) {
+        const samples = b.depth === 0 ? 34 : 16;
+        for (let i = 0; i < samples; i++) sourcePoints.push(b.worldCurveObj.getPoint(i / Math.max(1, samples - 1)));
+      }
+      for (const leaf of tree.leaves) {
+        if (Math.random() < .72) sourcePoints.push(leaf.userData.branch.worldCurveObj.getPoint(leaf.userData.attachAlong));
+      }
+
+      const geo = new THREE.BufferGeometry();
+      const pos = new Float32Array(count * 3);
+      const starts = [];
+      for (let i = 0; i < count; i++) {
+        const p = sourcePoints[Math.floor(Math.random() * sourcePoints.length)].clone();
+        p.x += (Math.random() - .5) * .32;
+        p.y += (Math.random() - .2) * .22;
+        p.z += (Math.random() - .5) * .32;
+        pos[i * 3] = p.x;
+        pos[i * 3 + 1] = p.y;
+        pos[i * 3 + 2] = p.z;
+        starts.push({ x: p.x, y: Math.max(.08, p.y), z: p.z, phase: Math.random() * 100, drift: .12 + Math.random() * .48, delay: Math.random() * .28 });
+      }
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const mat = new THREE.PointsMaterial({ size: .045, map: makeRadialTexture(64, [[0, 'rgba(207,164,104,.95)'], [.3, 'rgba(151,104,61,.56)'], [1, 'rgba(111,76,43,0)']]), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
+      const points = new THREE.Points(geo, mat);
+      points.visible = false;
+      tree.group.add(points);
+      return { points, starts, count, mat };
+    }
+
+    function createTreeInstance(cycleStartYear, generationIndex) {
+      const tree = {
+        cycleStartYear,
+        generationIndex,
+        group: new THREE.Group(),
+        branches: [],
+        primary: [],
+        leaves: [],
+        flowers: [],
+        rootlets: [],
+        materials: makeTreeMaterials()
+      };
+      world.add(tree.group);
+
+      function makeBranch({ start, parent = null, attachAlong = 0, dir, length, r0, r1, startTime, endTime, curve, depth }) {
+        const group = new THREE.Group();
+        const localPoints = [];
+        const worldPoints = [];
+        const up = dir.clone().normalize();
+        const anchorLocal = parent ? parent.curveObj.getPoint(attachAlong) : new THREE.Vector3(0, 0, 0);
+        const anchorWorld = parent ? parent.worldCurveObj.getPoint(attachAlong) : start.clone();
+        let side = new THREE.Vector3(-up.z, 0, up.x);
+        if (side.lengthSq() < .000001) side.set(1, 0, 0);
+        side.normalize().multiplyScalar(curve || 0);
+
+        for (let i = 0; i <= 9; i++) {
+          const k = i / 9;
+          const bend = Math.sin(k * Math.PI) * (curve || 0);
+          const localPoint = up.clone().multiplyScalar(length * k).add(side.clone().multiplyScalar(bend)).add(new THREE.Vector3(0, -0.12 * k * k * depth, 0));
+          localPoints.push(localPoint);
+          worldPoints.push(anchorWorld.clone().add(localPoint));
+        }
+
+        const curveObj = new THREE.CatmullRomCurve3(localPoints);
+        const worldCurveObj = new THREE.CatmullRomCurve3(worldPoints);
+        const geo = createCappedTaperedTubeGeometry(curveObj, 28, r0, r1, 12);
+        const material = depth === 0 ? tree.materials.trunkMat : (depth < 2 ? tree.materials.barkMat : tree.materials.youngBarkMat);
+        const mesh = new THREE.Mesh(geo, material);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        group.add(mesh);
+
+        const tip = new THREE.Mesh(new THREE.SphereGeometry(Math.max(r1 * 1.6, .025), 12, 8), tree.materials.branchTipMat);
+        tip.position.copy(localPoints[localPoints.length - 1]);
+        tip.castShadow = true;
+        group.add(tip);
+        group.position.copy(parent ? anchorLocal : start);
+        group.scale.setScalar(.0001);
+        if (parent) parent.group.add(group);
+        else tree.group.add(group);
+        const branch = { group, mesh, tip, points: localPoints, curveObj, worldCurveObj, parent, attachAlong, startTime, endTime, depth, r0, r1, length, children: [], visualGrowth: 0 };
+        tree.branches.push(branch);
+        return branch;
+      }
+
+      const trunk = makeBranch({ start: new THREE.Vector3(0, .11, 0), dir: new THREE.Vector3(.018, 1, .035), length: 5.45, r0: .34, r1: .105, startTime: .04, endTime: .48, curve: .13, depth: 0 });
+      tree.trunk = trunk;
+
+      for (let i = 0; i < 13; i++) {
+        const along = .14 + i * .057 + (Math.random() - .5) * .018;
+        const origin = trunk.worldCurveObj.getPoint(along);
+        const angle = i * 2.399 + .6 + generationIndex * .22;
+        const len = 1.55 + Math.random() * 1.3 + along * .55;
+        const elev = .24 + Math.random() * .36;
+        const b = makeBranch({ parent: trunk, attachAlong: along, start: origin, dir: branchDirection(angle, elev, 0), length: len, r0: .095 + (1 - along) * .095, r1: .032, startTime: .15 + along * .23, endTime: .54 + along * .22, curve: .16 + Math.random() * .16, depth: 1 });
+        tree.primary.push(b);
+      }
+
+      for (const p of tree.primary) {
+        for (let j = 0; j < 5; j++) {
+          const along = .36 + Math.random() * .55;
+          const origin = p.worldCurveObj.getPoint(along);
+          const base = Math.atan2(origin.z, origin.x) + (j % 2 ? 1 : -1) * (0.65 + Math.random() * .8);
+          const len = .75 + Math.random() * 1.45;
+          const elev = .26 + Math.random() * .62;
+          const b = makeBranch({ parent: p, attachAlong: along, start: origin, dir: branchDirection(base, elev, 0), length: len, r0: .045 + Math.random() * .035, r1: .016, startTime: p.startTime + .14 + Math.random() * .12, endTime: .82 + Math.random() * .12, curve: .15 + Math.random() * .2, depth: 2 });
+          p.children.push(b);
+        }
+      }
+
+      for (let i = 0; i < 16; i++) {
+        const a = i / 16 * Math.PI * 2;
+        const len = .38 + Math.random() * .58;
+        const curve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(Math.cos(a) * .16, .055, Math.sin(a) * .16),
+          new THREE.Vector3(Math.cos(a) * .44, .025, Math.sin(a) * .44),
+          new THREE.Vector3(Math.cos(a + .14) * len, .012, Math.sin(a + .14) * len)
+        ]);
+        const rootRadius = .012 + Math.random() * .014;
+        const mesh = new THREE.Mesh(createCappedTaperedTubeGeometry(curve, 14, rootRadius, rootRadius * .55, 7), tree.materials.rootMat);
+        mesh.castShadow = true;
+        mesh.scale.setScalar(.0001);
+        mesh.userData = { startTime: .08 + Math.random() * .14, endTime: .43 + Math.random() * .2 };
+        tree.group.add(mesh);
+        tree.rootlets.push(mesh);
+      }
+
+      const tempLeafColor = new THREE.Color();
+      for (const b of tree.branches.filter(x => x.depth >= 2)) {
+        for (let i = 0; i < 11; i++) {
+          const k = .35 + Math.random() * .65;
+          const pos = b.curveObj.getPoint(k);
+          const leaf = new THREE.Mesh(leafGeo, baseLeafMat.clone());
+          const leafColor = tempLeafColor.setHSL(.25 + Math.random() * .11, .55 + Math.random() * .28, .38 + Math.random() * .18).clone();
+          leaf.material.color.copy(leafColor);
+          leaf.position.copy(pos).add(new THREE.Vector3((Math.random() - .5) * .34, (Math.random() - .2) * .24, (Math.random() - .5) * .34));
+          leaf.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+          leaf.userData = { branch: b, attachAlong: k, baseScale: .62 + Math.random() * .88, startTime: .62 + Math.random() * .24, phase: Math.random() * 100, basePosition: leaf.position.clone(), baseRotation: leaf.rotation.clone(), originalColor: leafColor, fallDelay: Math.random() * .42 };
+          leaf.scale.setScalar(.0001);
+          leaf.visible = false;
+          leaf.castShadow = true;
+          b.group.add(leaf);
+          tree.leaves.push(leaf);
+        }
+        if (Math.random() > .38) {
+          const bloomAttach = .82 + Math.random() * .16;
+          const bloom = new THREE.Mesh(new THREE.IcosahedronGeometry(.105, 1), tree.materials.flowerMat.clone());
+          bloom.position.copy(b.curveObj.getPoint(bloomAttach));
+          bloom.scale.setScalar(.0001);
+          bloom.visible = false;
+          bloom.castShadow = true;
+          bloom.userData = { branch: b, attachAlong: bloomAttach, baseScale: .8 + Math.random() * 1.3, startTime: .83 + Math.random() * .1, phase: Math.random() * 100 };
+          b.group.add(bloom);
+          tree.flowers.push(bloom);
+        }
+      }
+
+      const seed = new THREE.Mesh(new THREE.SphereGeometry(.18, 32, 16), seedMat.clone());
+      seed.position.set(0, .16, 0);
+      seed.scale.set(1, .62, 1);
+      seed.castShadow = true;
+      tree.group.add(seed);
+      tree.seed = seed;
+
+      tree.decayParticles = createDecayParticleSystem(tree, 620);
+      tree.group.visible = false;
+      return tree;
+    }
+
+    const trees = [];
+    for (let startYear = 0; startYear < SIMULATION_YEARS; startYear += TREE_CYCLE_YEARS) trees.push(createTreeInstance(startYear, trees.length));
+
+    const sunDisc = new THREE.Mesh(new THREE.CircleGeometry(4.8, 96), new THREE.MeshBasicMaterial({ color: 0xffcf82, transparent: true, opacity: .32, blending: THREE.AdditiveBlending, depthWrite: false }));
+    sunDisc.position.set(-16, 9.5, -24);
+    sunDisc.lookAt(camera.position);
+    scene.add(sunDisc);
+
+    const rays = new THREE.Group();
+    const rayMat = new THREE.MeshBasicMaterial({ color: 0xffd89d, transparent: true, opacity: .036, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    for (let i = 0; i < 13; i++) {
+      const ray = new THREE.Mesh(new THREE.PlaneGeometry(.13 + Math.random() * .18, 22 + Math.random() * 18), rayMat.clone());
+      ray.position.set(-6 + Math.random() * 8, 8.5 - Math.random() * 2.5, -3 + Math.random() * 12);
+      ray.rotation.set(-.85 + Math.random() * .15, .16 + Math.random() * .12, -.34 + Math.random() * .16);
+      rays.add(ray);
+    }
+    scene.add(rays);
+
+    let elapsed = 0;
+    let paused = false;
+    let autoCameraEnabled = true;
+    const targetVector = new THREE.Vector3();
+    const desiredCameraPosition = new THREE.Vector3();
+
+    function disableAutoCamera() { autoCameraEnabled = false; }
+    function resetAutoCamera() { autoCameraEnabled = true; }
+
+    renderer.domElement.addEventListener('pointerdown', disableAutoCamera, { passive: true });
+    renderer.domElement.addEventListener('wheel', disableAutoCamera, { passive: true });
+    renderer.domElement.addEventListener('touchstart', disableAutoCamera, { passive: true });
+    controls.addEventListener('start', disableAutoCamera);
+
+    function restart() {
+      elapsed = 0;
+      paused = false;
+      resetAutoCamera();
+      pauseButton.textContent = 'Pause';
+      controls.target.copy(initialCameraTarget);
+      camera.position.copy(initialCameraPosition);
+    }
+
+    restartButton.onclick = restart;
+    pauseButton.onclick = () => { paused = !paused; pauseButton.textContent = paused ? 'Resume' : 'Pause'; };
+    addEventListener('keydown', e => {
+      if (e.code === 'Space') { e.preventDefault(); pauseButton.click(); }
+      if (e.code === 'KeyR') restart();
+      if (e.code.startsWith('Arrow') || e.code === 'NumpadAdd' || e.code === 'NumpadSubtract') disableAutoCamera();
+    });
+
+    function updateTree(tree, simYear, realTime) {
+      const localYear = simYear - tree.cycleStartYear;
+      const phase = phaseAtLocalYear(localYear);
+      tree.group.visible = phase.isAliveOrDecaying;
+      tree.decayParticles.points.visible = phase.dustOpacity > .01 && phase.isAliveOrDecaying;
+      if (!phase.isAliveOrDecaying) return;
+
+      const growth = phase.growth;
+      const decay = phase.decay;
+      const leafFall = phase.leafFall;
+      const branchWilt = phase.branchWilt;
+      const dustBuild = phase.dustBuild;
+      const visibleOpacity = clamp01(phase.structureOpacity);
+      const deathTint = branchWilt;
+
+      const trunkWoodiness = growWindow(growth, .09, .48);
+      tree.materials.trunkMat.color.copy(tree.materials.sproutColor).lerp(tree.materials.softWoodColor, growWindow(trunkWoodiness, 0, .55)).lerp(tree.materials.matureWoodColor, growWindow(trunkWoodiness, .42, 1)).lerp(tree.materials.deadWoodColor, deathTint);
+      tree.materials.trunkMat.roughness = THREE.MathUtils.lerp(.76, .95, Math.max(trunkWoodiness, deathTint));
+      tree.materials.barkMat.color.copy(tree.materials.matureWoodColor).lerp(tree.materials.deadWoodColor, deathTint);
+      tree.materials.youngBarkMat.color.set(0x6f8f42).lerp(tree.materials.deadWoodColor, deathTint);
+      tree.materials.branchMaterials.forEach(m => setMaterialOpacity(m, visibleOpacity));
+
+      tree.seed.visible = growth < .31 && decay < .02;
+      tree.seed.material.opacity = clamp01(1 - growWindow(growth, .08, .28));
+      tree.seed.scale.setScalar(Math.max(.0001, (1 - growWindow(growth, .07, .26))));
+      tree.seed.scale.y *= .62;
+      tree.seed.position.y = .16 - growWindow(growth, .08, .32) * .12;
+      tree.seed.rotation.y = realTime * .18;
+
+      for (const r of tree.rootlets) r.scale.setScalar(growWindow(growth, r.userData.startTime, r.userData.endTime) * (1 - dustBuild * .82));
+
+      for (const b of tree.branches) {
+        const temporalGrowth = growWindow(growth, b.startTime, b.endTime);
+        const parentGrowthGate = b.parent ? growWindow(b.parent.visualGrowth, Math.max(0, b.attachAlong - .035), Math.min(1, b.attachAlong + .08)) : 1;
+        const g = temporalGrowth * parentGrowthGate;
+        b.visualGrowth = g;
+        b.group.visible = (!b.parent || g > .0005) && visibleOpacity > .015;
+        b.group.scale.setScalar(Math.max(.0001, g * (1 - dustBuild * .88)));
+        const sway = growWindow(growth, .55, .95) * visibleOpacity;
+        const wiltDroop = branchWilt * (.035 + b.depth * .075);
+        b.group.rotation.z = Math.sin(realTime * .42 + b.depth + b.length + tree.generationIndex) * .008 * (b.depth + 1) * sway;
+        b.group.rotation.x = Math.cos(realTime * .37 + b.length + tree.generationIndex) * .0055 * (b.depth + 1) * sway - wiltDroop;
+      }
+
+      for (const leaf of tree.leaves) {
+        const branchReach = growWindow(leaf.userData.branch.visualGrowth, Math.max(0, leaf.userData.attachAlong - .02), Math.min(1, leaf.userData.attachAlong + .12));
+        const temporalGrowth = growWindow(growth, leaf.userData.startTime, leaf.userData.startTime + .22);
+        const leafGrowth = branchReach * temporalGrowth;
+        const fall = growWindow(leafFall, leaf.userData.fallDelay, 1);
+        const leafDust = growWindow(fall, .72, 1);
+        const flutter = 1 + Math.sin(realTime * 3.2 + leaf.userData.phase) * .035;
+        const leafOpacity = leafGrowth * (1 - leafDust) * (1 - dustBuild * .65);
+        leaf.visible = leafGrowth > .01 && leafOpacity > .01;
+        leaf.position.copy(leaf.userData.basePosition).add(new THREE.Vector3(Math.sin(realTime * .9 + leaf.userData.phase) * .38 * fall, -fall * (1.05 + leaf.userData.baseScale * .35), Math.cos(realTime * .7 + leaf.userData.phase) * .26 * fall));
+        leaf.scale.setScalar(Math.max(.0001, leafGrowth * leaf.userData.baseScale * flutter * (1 - leafDust * .55)));
+        leaf.rotation.x = leaf.userData.baseRotation.x + Math.sin(realTime * 1.1 + leaf.userData.phase) * (.035 + fall * .72);
+        leaf.rotation.y = leaf.userData.baseRotation.y + Math.sin(realTime * 1.7 + leaf.userData.phase) * (.055 + fall * .58);
+        leaf.rotation.z = leaf.userData.baseRotation.z + Math.cos(realTime * 1.4 + leaf.userData.phase) * (.042 + fall * 1.1);
+        leaf.material.color.copy(leaf.userData.originalColor).lerp(tree.materials.leafDeadColor, growWindow(leafFall, .03, .72));
+        setMaterialOpacity(leaf.material, leafOpacity);
+      }
+
+      for (const bloom of tree.flowers) {
+        const branchReach = growWindow(bloom.userData.branch.visualGrowth, Math.max(0, bloom.userData.attachAlong - .02), Math.min(1, bloom.userData.attachAlong + .08));
+        const temporalGrowth = growWindow(growth, bloom.userData.startTime, bloom.userData.startTime + .14);
+        const flowerGrowth = branchReach * temporalGrowth;
+        bloom.visible = flowerGrowth > .01 && visibleOpacity > .08;
+        bloom.scale.setScalar(Math.max(.0001, flowerGrowth * bloom.userData.baseScale * (1 + Math.sin(realTime * 4 + bloom.userData.phase) * .035) * (1 - dustBuild)));
+        setMaterialOpacity(bloom.material, visibleOpacity);
+      }
+
+      const dustSystem = tree.decayParticles;
+      const dustAttr = dustSystem.points.geometry.attributes.position;
+      dustSystem.mat.opacity = phase.dustOpacity * .95;
+      const fall = smoother(clamp01(dustBuild));
+      for (let i = 0; i < dustSystem.count; i++) {
+        const d = dustSystem.starts[i];
+        const particleFall = growWindow(dustBuild, d.delay, 1);
+        const wind = Math.sin(realTime * .9 + d.phase) * d.drift * particleFall;
+        dustAttr.array[i * 3] = d.x + wind;
+        dustAttr.array[i * 3 + 1] = Math.max(.018, d.y * (1 - particleFall) * (1 - .28 * fall));
+        dustAttr.array[i * 3 + 2] = d.z + Math.cos(realTime * .7 + d.phase) * d.drift * .38 * particleFall;
+      }
+      dustAttr.needsUpdate = true;
+    }
+
+    function updateAutoCamera(simYear, realTime) {
+      if (!autoCameraEnabled) return;
+      const activeCycleAge = simYear % TREE_CYCLE_YEARS;
+      const phase = phaseAtLocalYear(activeCycleAge);
+      const growth = phase.growth;
+      const decayHold = growWindow(activeCycleAge, FULL_GROWTH_YEARS, TREE_CYCLE_YEARS);
+      const radius = THREE.MathUtils.lerp(3.7, 7.25, growth);
+      const orbit = realTime * .042 + growth * .62 + decayHold * .14;
+      const targetY = THREE.MathUtils.lerp(.42, 2.78, growth);
+      targetVector.set(0, targetY, 0);
+      controls.target.lerp(targetVector, .035);
+      desiredCameraPosition.set(Math.cos(orbit) * radius, THREE.MathUtils.lerp(1.58, 3.72, growth), Math.sin(orbit) * radius);
+      camera.position.lerp(desiredCameraPosition, .025);
+    }
+
+    function updateSimulation(simYear, realTime) {
+      fill.style.width = `${Math.round(clamp01(simYear / SIMULATION_YEARS) * 100)}%`;
+      timeLabel.textContent = `Year ${Math.floor(simYear)} / ${SIMULATION_YEARS}`;
+
+      const activeCycleAge = simYear % TREE_CYCLE_YEARS;
+      const activePhase = phaseAtLocalYear(activeCycleAge);
+      seedGlow.intensity = 4.4 * (1 - growWindow(activePhase.growth, .16, .45)) * (1 - activePhase.decay) + .9 * Math.max(0, Math.sin(realTime * 3.4)) * (1 - activePhase.growth);
+
+      for (const tree of trees) updateTree(tree, simYear, realTime);
+      updateAutoCamera(simYear, realTime);
+
+      sun.intensity = THREE.MathUtils.lerp(3.1, 5.0, growWindow(activePhase.growth, .18, .86));
+      hemi.intensity = THREE.MathUtils.lerp(.82, 1.32, growWindow(activePhase.growth, .2, .9));
+      rim.intensity = THREE.MathUtils.lerp(.7, 1.65, growWindow(activePhase.growth, .5, .95));
+      sunDisc.lookAt(camera.position);
+      sunDisc.material.opacity = .2 + growWindow(activePhase.growth, .46, .9) * .2;
+      rays.children.forEach((ray, i) => ray.material.opacity = .018 + Math.sin(realTime * .4 + i) * .007 + growWindow(activePhase.growth, .48, .9) * .028);
+      world.rotation.y = Math.sin(realTime * .06) * .018;
+    }
+
+    function runSelfTests() {
+      const tests = [
+        ['THREE module loaded', () => Boolean(THREE && THREE.WebGLRenderer && THREE.Scene)],
+        ['OrbitControls loaded through import map', () => typeof OrbitControls === 'function'],
+        ['renderer canvas attached', () => container.contains(renderer.domElement)],
+        ['simulation spans 150 years', () => SIMULATION_YEARS === 150],
+        ['tree cycle is 75 years', () => TREE_CYCLE_YEARS === 75 && FULL_GROWTH_YEARS === 50 && DECAY_YEARS === 25],
+        ['150 year simulation creates two tree generations', () => trees.length === 2 && trees[0].cycleStartYear === 0 && trees[1].cycleStartYear === 75],
+        ['first generation fully grown at year 50', () => phaseAtLocalYear(50).growth === 1 && phaseAtLocalYear(50).decay === 0],
+        ['first generation fully decayed at year 75', () => phaseAtLocalYear(75).decay === 1],
+        ['tree structure is already gone by year 70', () => phaseAtLocalYear(70).structureOpacity === 0],
+        ['decay dust fades out before the next cycle starts', () => phaseAtLocalYear(70).dustOpacity > 0 && phaseAtLocalYear(75).dustOpacity === 0],
+        ['previous generation is visually inactive at cycle boundary', () => phaseAtLocalYear(75).isAliveOrDecaying === false],
+        ['tree branch graph created for each generation', () => trees.every(t => t.branches.length > 20 && t.leaves.length > 100 && t.rootlets.length === 16)],
+        ['trunk uses gradual aging material', () => trees.every(t => t.trunk.mesh.material === t.materials.trunkMat)],
+        ['primary branches are children of the trunk', () => trees.every(t => t.primary.every(b => b.parent === t.trunk && b.group.parent === t.trunk.group))],
+        ['secondary branches are parented to their real source branch', () => trees.every(t => t.primary.every(p => p.children.every(c => c.parent === p && c.group.parent === p.group)))],
+        ['leaves are attached to branch groups instead of floating in world space', () => trees.every(t => t.leaves.every(l => l.userData.branch && l.parent === l.userData.branch.group))],
+        ['decay dust exists for each generation', () => trees.every(t => t.decayParticles.count > 500 && t.decayParticles.points.parent === t.group)],
+        ['branch geometry has capped ends', () => trees.every(t => t.branches.every(b => b.mesh.geometry.userData.hasEndCaps === true))],
+        ['branch geometry tapers from base to tip', () => trees.every(t => t.branches.every(b => b.mesh.geometry.userData.isTaperedTube === true))],
+        ['root geometry has capped ends', () => trees.every(t => t.rootlets.every(r => r.geometry.userData.hasEndCaps === true))],
+        ['auto camera can be disabled and reset', () => { disableAutoCamera(); const disabled = !autoCameraEnabled; resetAutoCamera(); return disabled && autoCameraEnabled; }],
+        ['growth window clamps before start', () => growWindow(0, .2, .4) === 0],
+        ['growth window clamps after end', () => growWindow(1, .2, .4) === 1],
+        ['restart resets elapsed, pause state, and auto camera', () => { elapsed = 4; paused = true; autoCameraEnabled = false; restart(); return elapsed === 0 && paused === false && autoCameraEnabled && pauseButton.textContent === 'Pause'; }]
+      ];
+
+      for (const [name, test] of tests) {
+        const passed = test();
+        console.assert(passed, `Self-test failed: ${name}`);
+        if (!passed) throw new Error(`Self-test failed: ${name}`);
+      }
+      console.info(`Tree animation self-tests passed (${tests.length}/${tests.length}).`);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), .033);
+      if (!paused) elapsed += dt;
+      const progress = clamp01(elapsed / ANIMATION_SECONDS);
+      const simYear = progress * SIMULATION_YEARS;
+      updateSimulation(simYear, elapsed);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    runSelfTests();
+    animate();
+  </script>
+</body>
+</html>

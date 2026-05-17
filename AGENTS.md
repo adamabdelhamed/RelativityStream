@@ -574,3 +574,7 @@ The human owner should still review product direction and subjective quality:
 When browser validation is performed, the WorkReports entry should distinguish
 between automated Playwright coverage, Codex in-app browser inspection, and any
 manual review requested from the human owner.
+
+## NonIntegratedCode
+
+Offline research may result in files being placed in the top level NonIntegratedCode folder. You may be asked to integrate code found in this file into the main project. When doing do be sure to learn from the non integrated code, but do not break the patterns of the repo when integrating unless explicitly asked to.
