@@ -53,18 +53,17 @@ dt {
 }
 
 .experience-stage {
-  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto auto;
   gap: 14px;
-  min-height: calc(100vh - 204px);
   margin-top: 12px;
 }
 
 .stream-view {
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(360px, 1fr) auto;
+  grid-template-rows: auto auto auto;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--panel-border);
@@ -113,14 +112,14 @@ dt {
 
 .scene-window {
   position: relative;
-  min-height: 360px;
+  aspect-ratio: 16 / 8.7;
+  min-height: 300px;
 }
 
 .tree-scene {
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 360px;
 }
 
 .scene-bg {
@@ -212,12 +211,6 @@ dt {
   filter: blur(4px);
 }
 
-.growth-label {
-  fill: rgba(248, 250, 252, 0.72);
-  font-size: 14px;
-  font-weight: 800;
-}
-
 .stream-telemetry {
   position: relative;
   z-index: 3;
@@ -235,14 +228,13 @@ dt {
 }
 
 .signal-overlay {
-  position: absolute;
-  z-index: 5;
-  right: 18px;
-  bottom: 18px;
-  width: min(520px, 42%);
+  grid-column: 1 / -1;
+  position: relative;
+  z-index: 1;
+  width: 100%;
   border: 1px solid rgba(132, 204, 207, 0.22);
   border-radius: 8px;
-  background: rgba(3, 8, 18, 0.68);
+  background: rgba(3, 8, 18, 0.76);
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.34);
   backdrop-filter: blur(12px);
 }
@@ -271,7 +263,7 @@ dt {
 .overlay-diagram {
   display: block;
   width: 100%;
-  height: 154px;
+  height: 220px;
 }
 
 .overlay-axis {
@@ -367,7 +359,7 @@ dt {
 
 .control-rail {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 1fr;
   gap: 12px;
   margin-top: 12px;
   padding: 10px;
@@ -378,14 +370,18 @@ dt {
 }
 
 .rail-controls {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto auto auto minmax(260px, 1fr) minmax(230px, 0.8fr) minmax(230px, 0.8fr);
+  grid-template-areas:
+    "pov play reset speed velocity distance"
+    "timeline timeline timeline timeline timeline timeline";
   align-items: center;
-  flex-wrap: wrap;
   gap: 10px;
   min-width: 0;
 }
 
 .pov-toggle {
+  grid-area: pov;
   display: inline-flex;
   flex: 0 0 auto;
   gap: 3px;
@@ -404,6 +400,14 @@ dt {
 .pov-toggle button[aria-pressed='true'] {
   border-color: rgba(132, 204, 207, 0.55);
   background: rgba(132, 204, 207, 0.16);
+}
+
+.play-button {
+  grid-area: play;
+}
+
+.reset-button {
+  grid-area: reset;
 }
 
 button {
@@ -427,13 +431,62 @@ button:hover {
   align-items: center;
   gap: 8px;
   min-width: 220px;
-  flex: 1 1 320px;
   color: var(--text-muted);
   font-size: 14px;
 }
 
+.rail-slider:not(.compact) {
+  grid-area: timeline;
+}
+
 .rail-slider.compact {
-  flex: 0 1 270px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+}
+
+.rail-slider.compact input {
+  grid-column: 1 / -1;
+}
+
+.rail-slider.compact:nth-of-type(2) {
+  grid-area: velocity;
+}
+
+.rail-slider.compact:nth-of-type(3) {
+  grid-area: distance;
+}
+
+.speed-control {
+  grid-area: speed;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.speed-control > div {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(44px, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.speed-control button {
+  min-height: 34px;
+  border-color: transparent;
+  padding-inline: 8px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.speed-control button[aria-pressed='true'] {
+  border-color: rgba(217, 164, 65, 0.55);
+  background: rgba(217, 164, 65, 0.16);
 }
 
 input[type='range'] {
@@ -455,9 +508,8 @@ input[type='range'] {
 
 .clock-strip {
   display: grid;
-  grid-template-columns: repeat(3, auto);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: center;
-  justify-self: end;
   gap: 10px;
   margin: 0;
   pointer-events: none;
@@ -487,15 +539,17 @@ input[type='range'] {
   }
 
   .signal-overlay {
-    position: relative;
-    right: auto;
-    bottom: auto;
     order: -1;
-    width: 100%;
   }
 
   .rail-controls {
-    flex-wrap: wrap;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-areas:
+      "pov play reset"
+      "timeline timeline timeline"
+      "speed speed speed"
+      "velocity velocity velocity"
+      "distance distance distance";
   }
 
   .clock-strip {
@@ -521,10 +575,10 @@ input[type='range'] {
   }
 
   .stream-view {
-    grid-template-rows: auto minmax(300px, 1fr) auto;
+    grid-template-rows: auto auto auto;
   }
 
-  .tree-scene {
+  .scene-window {
     min-height: 300px;
   }
 
@@ -534,6 +588,10 @@ input[type='range'] {
   }
 
   .rail-slider {
+    grid-template-columns: 1fr;
+  }
+
+  .speed-control {
     grid-template-columns: 1fr;
   }
 }

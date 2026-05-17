@@ -21,6 +21,10 @@ describe('App', () => {
     expect(screen.getByText('7.2 y')).toBeInTheDocument()
     expect(screen.getByRole('slider', { name: 'Turnaround distance' })).toBeInTheDocument()
     expect(screen.getByText('4.8 ly')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '1x' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
     expect(screen.getByRole('button', { name: 'Earth POV' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -33,21 +37,44 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Play' }))
     expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument()
 
+    fireEvent.click(screen.getByRole('button', { name: '2x' }))
+    expect(screen.getByRole('button', { name: '2x' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+
+    fireEvent.change(screen.getByRole('slider', { name: 'Timeline' }), {
+      target: { value: '6' },
+    })
     fireEvent.change(screen.getByRole('slider', { name: 'Velocity' }), {
       target: { value: '0.5' },
     })
     expect(screen.getByText('0.50 c')).toBeInTheDocument()
-    expect(screen.getByText('19.2 y')).toBeInTheDocument()
+    expect(screen.getByText('9.6 y / 19.2 y')).toBeInTheDocument()
 
     fireEvent.change(screen.getByRole('slider', { name: 'Turnaround distance' }), {
       target: { value: '10' },
     })
     expect(screen.getByText('10.0 ly')).toBeInTheDocument()
+    expect(screen.getByText('20.0 y / 40.0 y')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
     expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
-    expect(screen.getByText('0.80 c')).toBeInTheDocument()
-    expect(screen.getByText('4.8 ly')).toBeInTheDocument()
+    expect(screen.getByText('0.50 c')).toBeInTheDocument()
+    expect(screen.getByText('10.0 ly')).toBeInTheDocument()
+    expect(screen.getByText('0.0 y / 40.0 y')).toBeInTheDocument()
+  })
+
+  it('restarts playback from zero when play is pressed at the end', () => {
+    render(<App />)
+
+    fireEvent.change(screen.getByRole('slider', { name: 'Timeline' }), {
+      target: { value: '12' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }))
+
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument()
+    expect(screen.getByText('0.0 y / 12.0 y')).toBeInTheDocument()
   })
 
   it('scrubs the timeline through model-backed tree age values', () => {
@@ -89,8 +116,7 @@ describe('App', () => {
 
     expect(screen.getByRole('img', { name: 'Earth tree aged to 12.0 y' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Traveler tree aged to 7.2 y' })).toBeInTheDocument()
-    expect(screen.getByText('local growth rings 12')).toBeInTheDocument()
-    expect(screen.getByText('local growth rings 7')).toBeInTheDocument()
+    expect(screen.queryByText(/local growth rings/i)).not.toBeInTheDocument()
   })
 
   it('highlights the turnaround signal in the propagation overlay', () => {

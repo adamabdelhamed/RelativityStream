@@ -21,19 +21,36 @@ test('opens and drives the visual RelativityStream model view', async ({ page })
     'aria-pressed',
     'true',
   )
+  await expect(page.getByRole('button', { name: '1x' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+
+  await page.getByRole('slider', { name: 'Timeline' }).fill('12')
+  await page.getByRole('button', { name: 'Play' }).click()
+  await expect(page.getByText('0.0 y / 12.0 y')).toBeVisible()
+  await page.getByRole('button', { name: 'Pause' }).click()
 
   await page.getByRole('button', { name: 'Play' }).click()
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible()
-
-  await page.getByRole('slider', { name: 'Velocity' }).fill('0.85')
-  await expect(page.getByText('0.85 c')).toBeVisible()
-
-  await page.getByRole('button', { name: 'Reset' }).click()
-  await expect(page.getByText('0.80 c')).toBeVisible()
-  await expect(page.getByText('4.8 ly')).toBeVisible()
+  await page.getByRole('button', { name: '2x' }).click()
+  await expect(page.getByRole('button', { name: '2x' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
 
   await page.getByRole('slider', { name: 'Timeline' }).fill('6')
+  await page.getByRole('slider', { name: 'Velocity' }).fill('0.85')
+  await expect(page.getByText('0.85 c')).toBeVisible()
+  await expect(page.getByText('5.6 y / 11.3 y')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Reset' }).click()
+  await expect(page.getByText('0.85 c')).toBeVisible()
+  await expect(page.getByText('4.8 ly')).toBeVisible()
+  await expect(page.getByText('0.0 y / 11.3 y')).toBeVisible()
+
+  await page.getByRole('slider', { name: 'Timeline' }).fill('5.6')
   await page.getByRole('button', { name: 'Traveler POV' }).click()
-  await expect(page.getByText('Received Earth stream from 1.2 y')).toBeVisible()
-  await expect(page.getByText('Ship clock 3.6 y')).toBeVisible()
+  await expect(page.getByText('Received Earth stream from 0.8 y')).toBeVisible()
+  await expect(page.getByText('Ship clock 2.9 y')).toBeVisible()
 })

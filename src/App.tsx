@@ -16,6 +16,7 @@ const minVelocity = 0.01
 const maxVelocity = 0.99
 const minTurnaroundDistance = 0.5
 const maxTurnaroundDistance = 100
+const simulationSpeeds = [0.5, 1, 2, 4]
 type PointOfView = 'earth' | 'traveler'
 
 function App() {
@@ -24,6 +25,7 @@ function App() {
   const [coordinateTime, setCoordinateTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [pointOfView, setPointOfView] = useState<PointOfView>('earth')
+  const [simulationSpeed, setSimulationSpeed] = useState(1)
 
   const scenario = useMemo(
     () => ({
@@ -33,7 +35,8 @@ function App() {
     [turnaroundDistance, velocity],
   )
   const sample = sampleScenario(scenario, coordinateTime)
-  const playbackStep = Math.max(0.08, sample.totalEarthTime / 300)
+  const timelineMax = Number(sample.totalEarthTime.toFixed(1))
+  const playbackStep = Math.max(0.08, sample.totalEarthTime / 300) * simulationSpeed
   const treeMaturityYears = sample.totalEarthTime
   const turnaroundReceiveTime = earthReceivesTurnaroundTime(scenario)
   const hasEarthSeenTurnaround = sample.coordinateTime >= turnaroundReceiveTime
@@ -80,9 +83,40 @@ function App() {
   }, [isPlaying, playbackStep, sample.totalEarthTime])
 
   const resetScenario = () => {
-    setVelocity(defaultVelocity)
-    setTurnaroundDistance(defaultTurnaroundDistance)
     setCoordinateTime(0)
+    setIsPlaying(false)
+  }
+
+  const playOrPause = () => {
+    if (isPlaying) {
+      setIsPlaying(false)
+      return
+    }
+
+    if (coordinateTime >= sample.totalEarthTime) {
+      setCoordinateTime(0)
+    }
+
+    setIsPlaying(true)
+  }
+
+  const preserveTimelineProgress = (nextVelocity: number, nextTurnaroundDistance: number) => {
+    const currentTotalTime = 2 * (turnaroundDistance / velocity)
+    const nextTotalTime = 2 * (nextTurnaroundDistance / nextVelocity)
+    const progress = currentTotalTime > 0 ? coordinateTime / currentTotalTime : 0
+
+    setCoordinateTime(Math.min(nextTotalTime, Math.max(0, progress * nextTotalTime)))
+  }
+
+  const changeVelocity = (nextVelocity: number) => {
+    preserveTimelineProgress(nextVelocity, turnaroundDistance)
+    setVelocity(nextVelocity)
+    setIsPlaying(false)
+  }
+
+  const changeTurnaroundDistance = (nextTurnaroundDistance: number) => {
+    preserveTimelineProgress(velocity, nextTurnaroundDistance)
+    setTurnaroundDistance(nextTurnaroundDistance)
     setIsPlaying(false)
   }
 
@@ -170,10 +204,10 @@ function App() {
               Traveler POV
             </button>
           </div>
-          <button type="button" onClick={() => setIsPlaying((value) => !value)}>
+          <button className="play-button" type="button" onClick={playOrPause}>
             {isPlaying ? 'Pause' : 'Play'}
           </button>
-          <button type="button" onClick={resetScenario}>
+          <button className="reset-button" type="button" onClick={resetScenario}>
             Reset
           </button>
           <label className="rail-slider">
@@ -182,7 +216,7 @@ function App() {
               aria-label="Timeline"
               type="range"
               min="0"
-              max={sample.totalEarthTime}
+              max={timelineMax}
               step="0.1"
               value={sample.coordinateTime}
               onChange={(event) => {
@@ -192,6 +226,21 @@ function App() {
             />
             <strong>{formatTime(sample.coordinateTime)} / {formatTime(sample.totalEarthTime)}</strong>
           </label>
+          <div className="speed-control" aria-label="Simulation speed">
+            <span>Speed</span>
+            <div>
+              {simulationSpeeds.map((speed) => (
+                <button
+                  key={speed}
+                  type="button"
+                  aria-pressed={simulationSpeed === speed}
+                  onClick={() => setSimulationSpeed(speed)}
+                >
+                  {speed}x
+                </button>
+              ))}
+            </div>
+          </div>
           <label className="rail-slider compact">
             <span>Velocity</span>
             <input
@@ -202,9 +251,7 @@ function App() {
               step="0.01"
               value={velocity}
               onChange={(event) => {
-                setVelocity(Number(event.target.value))
-                setCoordinateTime(0)
-                setIsPlaying(false)
+                changeVelocity(Number(event.target.value))
               }}
             />
             <strong>{velocity.toFixed(2)} c</strong>
@@ -219,9 +266,7 @@ function App() {
               step="0.1"
               value={turnaroundDistance}
               onChange={(event) => {
-                setTurnaroundDistance(Number(event.target.value))
-                setCoordinateTime(0)
-                setIsPlaying(false)
+                changeTurnaroundDistance(Number(event.target.value))
               }}
             />
             <strong>{turnaroundDistance.toFixed(1)} ly</strong>
@@ -315,8 +360,6 @@ function TreeScene({ growth, localAge, variant }: TreeSceneProps) {
   const rootY = 252
   const trunkTopY = rootY - trunkHeight
   const leafOpacity = Math.min(1, growth * 1.35)
-  const rings = Math.max(1, Math.round(localAge))
-
   return (
     <svg
       className="tree-scene"
@@ -368,7 +411,6 @@ function TreeScene({ growth, localAge, variant }: TreeSceneProps) {
       <circle className="canopy side" cx={218 - growth * 18} cy={trunkTopY + 22} r={canopyRadius * 0.72} opacity={leafOpacity} />
       <circle className="canopy side" cx={302 + growth * 18} cy={trunkTopY + 20} r={canopyRadius * 0.76} opacity={leafOpacity} />
       <circle className="canopy glow" cx="260" cy={trunkTopY - 8} r={canopyRadius + 14} opacity={leafOpacity * 0.35} />
-      <text className="growth-label" x="28" y="42">local growth rings {rings}</text>
     </svg>
   )
 }
