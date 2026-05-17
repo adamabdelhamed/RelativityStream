@@ -68,17 +68,11 @@ This repository uses GitHub Actions for validation and static hosting on GitHub 
 ### Workflows
 
 - `.github/workflows/ci.yml`
-  - Triggers on pull requests, pushes to `main`, and manual dispatch.
+  - Triggers on pushes to `master`.
   - Runs `npm ci`, `npm run lint`, `npm test`, and `npm run build`.
-  - Uploads `dist` as an artifact (when present) so build output can still be inspected.
-  - Contains an optional E2E job that runs on `main` pushes or manual dispatch.
-  - E2E installs Playwright browsers and uploads reports/results on failure.
-
-- `.github/workflows/deploy-pages.yml`
-  - Triggers on pushes to `main` and manual dispatch.
   - Builds with a GitHub Pages base path and deploys `dist` using official Pages actions.
   - Requires GitHub Pages to be enabled once in repository settings (Build and deployment source: GitHub Actions).
-  - The workflow does not auto-create the Pages site because the default workflow token lacks the repository-admin scope needed by the create-site API.
+  - Uses one workflow for validation and deployment to avoid duplicate Actions runs.
 
 ### Live site URL
 
@@ -88,11 +82,10 @@ After Pages is enabled, the site URL pattern is:
 
 ### Branch protection and required checks
 
-Enable branch protection for `main` in GitHub repository settings and require status checks before merge.
+Enable branch protection for `master` in GitHub repository settings and require status checks before merge.
 Recommended required checks:
 
-- `Lint, unit tests, and build`
-- optionally `E2E (optional)` if you want E2E required on `main`/manual runs only
+- `Build, test, and deploy`
 
 Suggested settings:
 
@@ -103,7 +96,7 @@ Suggested settings:
 ### Manual rerun and rollback
 
 - Rerun: open the workflow run in GitHub Actions and use **Re-run jobs**.
-- Rollback: revert the bad `main` commit (or restore an earlier commit), then push; deployment will republish automatically.
+- Rollback: revert the bad `master` commit (or restore an earlier commit), then push; deployment will republish automatically.
 
 ### Other static hosting options
 
