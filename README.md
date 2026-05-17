@@ -77,6 +77,8 @@ This repository uses GitHub Actions for validation and static hosting on GitHub 
 - `.github/workflows/deploy-pages.yml`
   - Triggers on pushes to `main` and manual dispatch.
   - Builds with a GitHub Pages base path and deploys `dist` using official Pages actions.
+  - Requires GitHub Pages to be enabled once in repository settings (Build and deployment source: GitHub Actions).
+  - The workflow does not auto-create the Pages site because the default workflow token lacks the repository-admin scope needed by the create-site API.
 
 ### Live site URL
 
