@@ -4,7 +4,7 @@ export const DEFAULT_TURNAROUND_DISTANCE_LY = 100
 export const MIN_VELOCITY_FRACTION_OF_C = 0.01
 export const MAX_VELOCITY_FRACTION_OF_C = 0.99
 export const MIN_TURNAROUND_DISTANCE_LY = 0.5
-export const MAX_TURNAROUND_DISTANCE_LY = 100
+export const MAX_TURNAROUND_DISTANCE_LY = 1000
 
 // Playback speed options multiply the timeline step. Keep the default in this list.
 export const DEFAULT_SIMULATION_SPEED = 1
@@ -32,7 +32,7 @@ export const TREE_MAX_VISIBLE_GENERATIONS = 3
 // Persistent dust heap. A value of 0.01 means 100 complete tree deaths build
 // a pile as tall as the mature tree. Keep this small; high values dominate the scene.
 export const TREE_MAX_HEIGHT_UNITS = 6.8
-export const TREE_DUST_PILE_HEIGHT_PER_DEATH_RATIO = 0.01
+export const TREE_DUST_PILE_HEIGHT_PER_DEATH_RATIO = 0.033
 export const TREE_DUST_PILE_RADIUS_UNITS = 1.55
 
 // Fixed camera framing. Larger z values zoom out; keep high enough to see the full mature tree.

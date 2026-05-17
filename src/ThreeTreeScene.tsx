@@ -248,10 +248,12 @@ function createMaterials(variant: SceneVariant): TreeMaterials {
 
   return {
     bark: new THREE.MeshStandardMaterial({
-      color: space ? 0x7893a4 : 0x7a4729,
+      color: space ? 0xd99558 : 0x7a4729,
+      emissive: space ? 0x5f2418 : 0x000000,
+      emissiveIntensity: space ? 0.72 : 0,
       map: barkTexture,
-      metalness: space ? 0.18 : 0,
-      roughness: 0.86,
+      metalness: space ? 0.08 : 0,
+      roughness: space ? 0.78 : 0.86,
       transparent: true,
     }),
     leaf: new THREE.MeshStandardMaterial({
@@ -280,8 +282,10 @@ function createMaterials(variant: SceneVariant): TreeMaterials {
       transparent: true,
     }),
     young: new THREE.MeshStandardMaterial({
-      color: space ? 0xa8c4d3 : 0x6f8f42,
-      metalness: space ? 0.12 : 0,
+      color: space ? 0xf2b06a : 0x6f8f42,
+      emissive: space ? 0x6a2f1e : 0x000000,
+      emissiveIntensity: space ? 0.52 : 0,
+      metalness: space ? 0.08 : 0,
       roughness: 0.76,
       transparent: true,
     }),
@@ -581,9 +585,12 @@ function updateTree(tree: TreeGeneration, visualTreeYear: number, variant: Scene
     setMaterialOpacity(root.material as THREE.Material, visibleOpacity)
   }
 
-  const liveColor = new THREE.Color(variant === 'earth' ? 0x7a4729 : 0x7893a4)
-  const deadColor = new THREE.Color(variant === 'earth' ? 0x6b5a48 : 0x5e6d7a)
-  const youngColor = new THREE.Color(variant === 'earth' ? 0x6f8f42 : 0xa8c4d3)
+  const liveColor = new THREE.Color(variant === 'earth' ? 0x7a4729 : 0xd99558)
+  const deadColor = new THREE.Color(variant === 'earth' ? 0x6b5a48 : 0x8e5b5f)
+  const youngColor = new THREE.Color(variant === 'earth' ? 0x6f8f42 : 0xf2b06a)
+  const liveGlow = new THREE.Color(variant === 'earth' ? 0x000000 : 0x5f2418)
+  const deadGlow = new THREE.Color(variant === 'earth' ? 0x000000 : 0x241018)
+  const youngGlow = new THREE.Color(variant === 'earth' ? 0x000000 : 0x6a2f1e)
   for (const branch of tree.branches) {
     const temporalGrowth = growWindow(phase.growth, branch.startAt, branch.startAt + 0.3)
     const growth = temporalGrowth * visibleOpacity
@@ -594,6 +601,8 @@ function updateTree(tree: TreeGeneration, visualTreeYear: number, variant: Scene
     branch.group.rotation.x += Math.cos(elapsed * 0.37 + branch.length + tree.generationIndex) * 0.0055 * (branch.depth + 1) * visibleOpacity - branchWilt * (0.035 + branch.depth * 0.075)
     const material = branch.mesh.material as THREE.MeshStandardMaterial
     material.color.copy(branch.depth > 1 ? youngColor : liveColor).lerp(deadColor, branchWilt)
+    material.emissive.copy(branch.depth > 1 ? youngGlow : liveGlow).lerp(deadGlow, branchWilt)
+    material.emissiveIntensity = variant === 'space' ? 0.62 * visibleOpacity : 0
     setMaterialOpacity(material, visibleOpacity)
     setMaterialOpacity(branch.tip.material as THREE.Material, visibleOpacity)
   }
