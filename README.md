@@ -67,14 +67,14 @@ This repository uses GitHub Actions for validation and static hosting on GitHub 
 
 ### Workflows
 
-- `/home/runner/work/RelativityStream/RelativityStream/.github/workflows/ci.yml`
+- `.github/workflows/ci.yml`
   - Triggers on pull requests, pushes to `main`, and manual dispatch.
   - Runs `npm ci`, `npm run lint`, `npm test`, and `npm run build`.
   - Uploads `dist` as an artifact (when present) so build output can still be inspected.
   - Contains an optional E2E job that runs on `main` pushes or manual dispatch.
   - E2E installs Playwright browsers and uploads reports/results on failure.
 
-- `/home/runner/work/RelativityStream/RelativityStream/.github/workflows/deploy-pages.yml`
+- `.github/workflows/deploy-pages.yml`
   - Triggers on pushes to `main` and manual dispatch.
   - Builds with a GitHub Pages base path and deploys `dist` using official Pages actions.
 

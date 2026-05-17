@@ -2,16 +2,16 @@
 
 ## What changed
 
-- Added GitHub Actions CI workflow at `/home/runner/work/RelativityStream/RelativityStream/.github/workflows/ci.yml`.
+- Added GitHub Actions CI workflow at `.github/workflows/ci.yml`.
   - Validates pull requests and `main` pushes with lint, unit tests, and build.
   - Uploads `dist` artifacts for inspection.
   - Adds an optional Playwright E2E stage for `main` pushes and manual runs.
-- Added GitHub Pages deployment workflow at `/home/runner/work/RelativityStream/RelativityStream/.github/workflows/deploy-pages.yml`.
+- Added GitHub Pages deployment workflow at `.github/workflows/deploy-pages.yml`.
   - Builds the Vite app and deploys static `dist` output through official Pages actions.
-- Updated `/home/runner/work/RelativityStream/RelativityStream/vite.config.ts`.
+- Updated `vite.config.ts`.
   - Added configurable `base` path support via `VITE_BASE_PATH`.
   - Keeps local development behavior unchanged while supporting project-site deploy paths.
-- Updated `/home/runner/work/RelativityStream/RelativityStream/README.md`.
+- Updated `README.md`.
   - Documented CI triggers, deployment behavior, expected URL, rerun/rollback flow, and alternative static hosts.
   - Included branch protection and required checks guidance.
 
