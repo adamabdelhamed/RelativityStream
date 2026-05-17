@@ -80,9 +80,11 @@ This repository uses GitHub Actions for validation and static hosting on GitHub 
 
 ### Live site URL
 
-After Pages is enabled for this repo, the expected site URL is:
+After Pages is enabled, the site URL pattern is:
 
-- `https://adamabdelhamed.github.io/RelativityStream/`
+- `https://<username>.github.io/<repository-name>/`
+
+For this canonical repository, that resolves to `https://adamabdelhamed.github.io/RelativityStream/`.
 
 ### Branch protection and required checks
 

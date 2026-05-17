@@ -1,7 +1,19 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
-const repositoryName = process.env.GITHUB_REPOSITORY?.split('/')[1]
+const repositoryName = (() => {
+  const repository = process.env.GITHUB_REPOSITORY
+  if (!repository) {
+    return undefined
+  }
+
+  const [owner, name] = repository.split('/')
+  if (!owner || !name) {
+    return undefined
+  }
+
+  return name
+})()
 const defaultPagesBase = repositoryName ? `/${repositoryName}/` : '/'
 const base = process.env.VITE_BASE_PATH
   ?? (process.env.GITHUB_ACTIONS === 'true' ? defaultPagesBase : '/')
