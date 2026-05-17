@@ -84,8 +84,6 @@ After Pages is enabled, the site URL pattern is:
 
 - `https://<username>.github.io/<repository-name>/`
 
-For this canonical repository, that resolves to `https://adamabdelhamed.github.io/RelativityStream/`.
-
 ### Branch protection and required checks
 
 Enable branch protection for `main` in GitHub repository settings and require status checks before merge.

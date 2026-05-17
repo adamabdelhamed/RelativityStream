@@ -7,12 +7,12 @@ const repositoryName = (() => {
     return undefined
   }
 
-  const [owner, name] = repository.split('/')
-  if (!owner || !name) {
+  const parts = repository.split('/')
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
     return undefined
   }
 
-  return name
+  return parts[1]
 })()
 const defaultPagesBase = repositoryName ? `/${repositoryName}/` : '/'
 const base = process.env.VITE_BASE_PATH
