@@ -13,12 +13,14 @@ test('opens and drives the full-screen RelativityStream POV view', async ({ page
   await expect(page).toHaveTitle('RelativityStream')
   await expect(page.getByText('Relativity Simulator')).toBeVisible()
   await expect(page.getByRole('region', { name: 'Earth POV', exact: true })).toBeVisible()
-  await expect(page.getByLabel('Traveler POV Incoming Stream picture in picture')).toBeVisible()
+  await expect(page.getByLabel('Traveler POV Telescope view of traveler picture in picture')).toBeVisible()
   await expect(page.getByLabel('Signal propagation view')).toBeVisible()
   await expect(page.getByText('later')).toBeVisible()
   await expect(page.getByText('farther from Earth')).toBeVisible()
-  await expect(page.getByText('0.0 y / 222.2 y')).toBeVisible()
+  await expect(page.getByText('0.0 y / 222.2 y')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Play' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reset' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Enter full screen' })).toBeVisible()
   await expect(page.getByRole('button', { name: '1x' })).toHaveAttribute(
     'aria-expanded',
     'false',
@@ -31,7 +33,7 @@ test('opens and drives the full-screen RelativityStream POV view', async ({ page
   await expect(page.getByLabel('Earth 3D tree aged to 0.0 y')).toHaveAttribute('data-decay-pile-generations', '')
 
   await page.getByRole('slider', { name: 'Timeline' }).fill('6')
-  await expect(page.getByText('6.0 y / 222.2 y')).toBeVisible()
+  await expect(page.getByRole('slider', { name: 'Timeline' })).toHaveValue('6')
   await expect(page.getByText(/Received ship 1.4 y at 2.84 ly/)).toBeVisible()
   await page.getByRole('slider', { name: 'Timeline' }).fill('111.2')
   await expect(page.getByText('turnaround signal')).toBeVisible()
@@ -47,14 +49,14 @@ test('opens and drives the full-screen RelativityStream POV view', async ({ page
   await page.getByRole('button', { name: '0.90 c' }).click()
   await page.getByRole('slider', { name: 'Velocity' }).fill('0.85')
   await expect(page.getByRole('button', { name: '0.85 c' })).toBeVisible()
-  await expect(page.getByText('6.4 y / 235.3 y')).toBeVisible()
+  await expect(page.getByRole('slider', { name: 'Timeline' })).toHaveValue('6.4')
 
   await page.getByRole('button', { name: '100.0 ly' }).click()
   await page.getByRole('spinbutton', { name: 'Turnaround distance value' }).fill('10')
   await page.getByRole('spinbutton', { name: 'Turnaround distance value' }).press('Enter')
   await expect(page.getByRole('button', { name: '10.0 ly' })).toBeVisible()
 
-  const pip = page.getByLabel('Traveler POV Incoming Stream picture in picture')
+  const pip = page.getByLabel('Traveler POV Telescope view of traveler picture in picture')
   const pipStartBox = await pip.boundingBox()
   expect(pipStartBox).not.toBeNull()
   if (!pipStartBox) {
@@ -86,11 +88,8 @@ test('opens and drives the full-screen RelativityStream POV view', async ({ page
 
   await pip.click()
   await expect(page.getByRole('region', { name: 'Traveler POV', exact: true })).toBeVisible()
-  await expect(page.getByLabel('Earth POV Incoming Stream picture in picture')).toBeVisible()
+  await expect(page.getByLabel('Earth POV Telescope view of earth picture in picture')).toBeVisible()
   await expect(page.getByText(/Received Earth stream from/)).toBeVisible()
-
-  await page.getByRole('button', { name: 'Reset' }).click()
-  await expect(page.getByText('0.0 y / 23.5 y')).toBeVisible()
 
   expect(consoleErrors).toEqual([])
 })
@@ -113,7 +112,7 @@ test('keeps the signal overlay ship marker aligned for low-speed short-distance 
   await page.getByRole('spinbutton', { name: 'Turnaround distance value' }).press('Enter')
   await page.getByRole('slider', { name: 'Timeline' }).fill('50')
 
-  await expect(page.getByText('50.0 y / 100.0 y')).toBeVisible()
+  await expect(page.getByRole('slider', { name: 'Timeline' })).toHaveValue('50')
   const lowSpeedOverlay = await page.locator('.signal-overlay').evaluate((overlay) => {
     const ship = overlay.querySelector('.overlay-ship')
     const turn = Array.from(overlay.querySelectorAll('text')).find((node) => node.textContent === 'turn')
@@ -142,12 +141,61 @@ test('continues tree generations after the visible pool is exceeded', async ({ p
   await page.getByRole('spinbutton', { name: 'Turnaround distance value' }).press('Enter')
   await page.getByRole('slider', { name: 'Timeline' }).fill('675')
 
-  await expect(page.getByText('675.0 y / 2222.2 y')).toBeVisible()
+  await expect(page.getByRole('slider', { name: 'Timeline' })).toHaveValue('675')
   const earthTree = page.getByLabel('Earth 3D tree aged to 675.0 y')
   await expect(earthTree.locator('canvas')).toBeVisible()
   await expect(earthTree).toHaveAttribute('data-visual-tree-year', '675.0')
   await expect(earthTree).toHaveAttribute('data-visible-generations', '2,3,4,5,6,7,8,9')
   await expect(earthTree).toHaveAttribute('data-decay-pile-generations', '0,1,2,3,4,5,6,7,8')
   await expect(page.getByText('NaN')).toHaveCount(0)
+  expect(consoleErrors).toEqual([])
+})
+
+test('collapses secondary controls behind more menu in portrait mobile', async ({ page }) => {
+  const consoleErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      consoleErrors.push(message.text())
+    }
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+
+  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible()
+  await expect(page.getByRole('slider', { name: 'Timeline' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'More controls' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '1x' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '0.90 c' })).toHaveCount(0)
+
+  const railLayout = await page.locator('.control-rail').evaluate((rail) => {
+    const timeline = rail.querySelector('input[aria-label="Timeline"]')
+    const play = rail.querySelector('.play-button')
+    const more = rail.querySelector('.more-popover')
+    const timelineBox = timeline?.getBoundingClientRect()
+    const playBox = play?.getBoundingClientRect()
+    const moreBox = more?.getBoundingClientRect()
+
+    return {
+      moreRight: moreBox?.right,
+      playLeft: playBox?.left,
+      timelineWidth: timelineBox?.width,
+    }
+  })
+  expect(railLayout.timelineWidth).toBeGreaterThan(240)
+  expect(railLayout.playLeft).toBeLessThan(railLayout.moreRight ?? 0)
+
+  await page.getByRole('button', { name: 'More controls' }).click()
+  await expect(page.getByText('Play speed')).toBeVisible()
+  await expect(page.getByRole('button', { name: '2x' })).toBeVisible()
+  await expect(page.getByRole('slider', { name: 'Velocity' })).toBeVisible()
+  await expect(page.getByRole('slider', { name: 'Turnaround distance' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Enter full screen' })).toBeVisible()
+
+  await page.getByRole('button', { name: '2x' }).click()
+  await expect(page.getByRole('button', { name: 'More controls' })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  )
   expect(consoleErrors).toEqual([])
 })

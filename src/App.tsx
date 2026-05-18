@@ -34,6 +34,7 @@ type DragState = {
   width: number
 }
 type SettingsMenu = 'speed' | 'velocity' | 'distance' | null
+type CompactMenu = 'more' | null
 
 function App() {
   const [velocity, setVelocity] = useState(DEFAULT_VELOCITY_FRACTION_OF_C)
@@ -43,6 +44,9 @@ function App() {
   const [pointOfView, setPointOfView] = useState<PointOfView>('earth')
   const [simulationSpeed, setSimulationSpeed] = useState(DEFAULT_SIMULATION_SPEED)
   const [activeMenu, setActiveMenu] = useState<SettingsMenu>(null)
+  const [compactMenu, setCompactMenu] = useState<CompactMenu>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [useCompactControls, setUseCompactControls] = useState(getShouldUseCompactControls)
   const [pipPosition, setPipPosition] = useState<PanelPosition>({
     height: 210,
     left: window.innerWidth - 390,
@@ -127,17 +131,48 @@ function App() {
   }, [isPlaying, playbackStep, sample.totalEarthTime])
 
   useEffect(() => {
+    const syncControlLayout = () => {
+      setUseCompactControls(getShouldUseCompactControls())
+    }
+
+    syncControlLayout()
+    window.addEventListener('resize', syncControlLayout)
+    window.addEventListener('orientationchange', syncControlLayout)
+
+    return () => {
+      window.removeEventListener('resize', syncControlLayout)
+      window.removeEventListener('orientationchange', syncControlLayout)
+    }
+  }, [])
+
+  useEffect(() => {
+    const syncFullscreenState = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement))
+    }
+
+    document.addEventListener('fullscreenchange', syncFullscreenState)
+
+    return () => {
+      document.removeEventListener('fullscreenchange', syncFullscreenState)
+    }
+  }, [])
+
+  useEffect(() => {
     const dismiss = (event: PointerEvent) => {
       if (!controlsRef.current?.contains(event.target as Node)) {
         if (controlsRef.current?.contains(document.activeElement)) {
           (document.activeElement as HTMLElement).blur()
         }
-        window.requestAnimationFrame(() => setActiveMenu(null))
+        window.requestAnimationFrame(() => {
+          setActiveMenu(null)
+          setCompactMenu(null)
+        })
       }
     }
     const dismissOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setActiveMenu(null)
+        setCompactMenu(null)
       }
     }
 
@@ -149,11 +184,6 @@ function App() {
       document.removeEventListener('keydown', dismissOnEscape)
     }
   }, [])
-
-  const resetScenario = () => {
-    setCoordinateTime(0)
-    setIsPlaying(false)
-  }
 
   const playOrPause = () => {
     if (isPlaying) {
@@ -196,6 +226,21 @@ function App() {
 
   const togglePov = () => {
     setPointOfView((current) => (current === 'earth' ? 'traveler' : 'earth'))
+  }
+
+  const toggleFullscreen = async () => {
+    const root = document.documentElement
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen?.()
+        return
+      }
+
+      await root.requestFullscreen?.()
+    } catch {
+      setIsFullscreen(Boolean(document.fullscreenElement))
+    }
   }
 
   const startPipInteraction = (event: ReactPointerEvent<HTMLElement>) => {
@@ -384,7 +429,7 @@ function App() {
             top: pipPosition.top,
             width: pipPosition.width,
           }}
-          aria-label={`${pipView.title} Incoming Stream picture in picture`}
+          aria-label={`${pipView.title} ${pipView.telescopeLabel} picture in picture`}
           onPointerDown={startPipInteraction}
           onContextMenu={(event) => event.preventDefault()}
         >
@@ -395,7 +440,7 @@ function App() {
             variant={pipView.variant}
           />
           <div className="pip-copy">
-            <span>{pipView.title} Incoming Stream</span>
+            <span>{pipView.telescopeLabel}</span>
             <strong>{formatTime(pipView.localAge)}</strong>
           </div>
           <span className="resize-corner" aria-hidden="true" />
@@ -434,71 +479,144 @@ function App() {
                 setIsPlaying(false)
               }}
             />
-            <strong>{formatTime(sample.coordinateTime)} / {formatTime(sample.totalEarthTime)}</strong>
           </label>
 
-          <button className="reset-button" type="button" onClick={resetScenario}>
-            Reset
-          </button>
-
-          <PopoverButton
-            active={activeMenu === 'speed'}
-            icon={<ClockIcon />}
-            label={`${simulationSpeed}x`}
-            onClick={() => setActiveMenu(activeMenu === 'speed' ? null : 'speed')}
-          >
-            <div className="option-grid" aria-label="Simulation speed">
-              {SIMULATION_SPEED_OPTIONS.map((speed) => (
+          {useCompactControls ? (
+            <PopoverButton
+              active={compactMenu === 'more'}
+              className="more-popover"
+              icon={<MoreIcon />}
+              label="More controls"
+              onClick={() => {
+                setActiveMenu(null)
+                setCompactMenu(compactMenu === 'more' ? null : 'more')
+              }}
+            >
+              <div className="more-menu" aria-label="More scenario controls">
+                <div className="more-menu-section">
+                  <span>Play speed</span>
+                  <div className="option-grid" aria-label="Simulation speed">
+                    {SIMULATION_SPEED_OPTIONS.map((speed) => (
+                      <button
+                        key={speed}
+                        type="button"
+                        aria-pressed={simulationSpeed === speed}
+                        onClick={() => {
+                          setSimulationSpeed(speed)
+                          setCompactMenu(null)
+                        }}
+                      >
+                        {speed}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <NumericSlider
+                  label="Velocity"
+                  max={MAX_VELOCITY_FRACTION_OF_C}
+                  min={MIN_VELOCITY_FRACTION_OF_C}
+                  onChange={changeVelocity}
+                  onDismiss={() => setCompactMenu(null)}
+                  step={0.01}
+                  suffix="c"
+                  value={velocity}
+                />
+                <NumericSlider
+                  label="Turnaround distance"
+                  max={MAX_TURNAROUND_DISTANCE_LY}
+                  min={MIN_TURNAROUND_DISTANCE_LY}
+                  onChange={changeTurnaroundDistance}
+                  onDismiss={() => setCompactMenu(null)}
+                  step={0.1}
+                  suffix="ly"
+                  value={turnaroundDistance}
+                />
                 <button
-                  key={speed}
+                  className="fullscreen-button secondary-control menu-fullscreen"
                   type="button"
-                  aria-pressed={simulationSpeed === speed}
+                  aria-label={isFullscreen ? 'Exit full screen' : 'Enter full screen'}
                   onClick={() => {
-                    setSimulationSpeed(speed)
-                    setActiveMenu(null)
+                    void toggleFullscreen()
+                    setCompactMenu(null)
                   }}
                 >
-                  {speed}x
+                  <FullscreenIcon active={isFullscreen} />
+                  <span>{isFullscreen ? 'Exit full screen' : 'Enter full screen'}</span>
                 </button>
-              ))}
-            </div>
-          </PopoverButton>
+              </div>
+            </PopoverButton>
+          ) : (
+            <>
+              <PopoverButton
+                active={activeMenu === 'speed'}
+                icon={<ClockIcon />}
+                label={`${simulationSpeed}x`}
+                onClick={() => setActiveMenu(activeMenu === 'speed' ? null : 'speed')}
+              >
+                <div className="option-grid" aria-label="Simulation speed">
+                  {SIMULATION_SPEED_OPTIONS.map((speed) => (
+                    <button
+                      key={speed}
+                      type="button"
+                      aria-pressed={simulationSpeed === speed}
+                      onClick={() => {
+                        setSimulationSpeed(speed)
+                        setActiveMenu(null)
+                      }}
+                    >
+                      {speed}x
+                    </button>
+                  ))}
+                </div>
+              </PopoverButton>
 
-          <PopoverButton
-            active={activeMenu === 'velocity'}
-            icon={<VelocityIcon />}
-            label={`${velocity.toFixed(2)} c`}
-            onClick={() => setActiveMenu(activeMenu === 'velocity' ? null : 'velocity')}
-          >
-            <NumericSlider
-              label="Velocity"
-              max={MAX_VELOCITY_FRACTION_OF_C}
-              min={MIN_VELOCITY_FRACTION_OF_C}
-              onChange={changeVelocity}
-              onDismiss={() => setActiveMenu(null)}
-              step={0.01}
-              suffix="c"
-              value={velocity}
-            />
-          </PopoverButton>
+              <PopoverButton
+                active={activeMenu === 'velocity'}
+                icon={<VelocityIcon />}
+                label={`${velocity.toFixed(2)} c`}
+                onClick={() => setActiveMenu(activeMenu === 'velocity' ? null : 'velocity')}
+              >
+                <NumericSlider
+                  label="Velocity"
+                  max={MAX_VELOCITY_FRACTION_OF_C}
+                  min={MIN_VELOCITY_FRACTION_OF_C}
+                  onChange={changeVelocity}
+                  onDismiss={() => setActiveMenu(null)}
+                  step={0.01}
+                  suffix="c"
+                  value={velocity}
+                />
+              </PopoverButton>
 
-          <PopoverButton
-            active={activeMenu === 'distance'}
-            icon={<DistanceIcon />}
-            label={`${turnaroundDistance.toFixed(1)} ly`}
-            onClick={() => setActiveMenu(activeMenu === 'distance' ? null : 'distance')}
-          >
-            <NumericSlider
-              label="Turnaround distance"
-              max={MAX_TURNAROUND_DISTANCE_LY}
-              min={MIN_TURNAROUND_DISTANCE_LY}
-              onChange={changeTurnaroundDistance}
-              onDismiss={() => setActiveMenu(null)}
-              step={0.1}
-              suffix="ly"
-              value={turnaroundDistance}
-            />
-          </PopoverButton>
+              <PopoverButton
+                active={activeMenu === 'distance'}
+                icon={<DistanceIcon />}
+                label={`${turnaroundDistance.toFixed(1)} ly`}
+                onClick={() => setActiveMenu(activeMenu === 'distance' ? null : 'distance')}
+              >
+                <NumericSlider
+                  label="Turnaround distance"
+                  max={MAX_TURNAROUND_DISTANCE_LY}
+                  min={MIN_TURNAROUND_DISTANCE_LY}
+                  onChange={changeTurnaroundDistance}
+                  onDismiss={() => setActiveMenu(null)}
+                  step={0.1}
+                  suffix="ly"
+                  value={turnaroundDistance}
+                />
+              </PopoverButton>
+
+              <button
+                className="fullscreen-button secondary-control"
+                type="button"
+                aria-label={isFullscreen ? 'Exit full screen' : 'Enter full screen'}
+                onClick={toggleFullscreen}
+              >
+                <FullscreenIcon active={isFullscreen} />
+                <span>{isFullscreen ? 'Exit' : 'Full screen'}</span>
+              </button>
+            </>
+          )}
         </section>
       </section>
     </main>
@@ -554,6 +672,7 @@ function getReceivedViewModel(pointOfView: PointOfView, inputs: Omit<ViewModelIn
       secondaryStat: `${travelerPositionSeenByEarth.toFixed(2)} ly from Earth, ${streamRate.toFixed(2)}x`,
       streamMode: 'received' as const,
       subtitle: `Received traveler stream at Earth`,
+      telescopeLabel: 'Telescope view of traveler',
       title: 'Traveler POV',
       variant: 'space' as const,
     }
@@ -566,6 +685,7 @@ function getReceivedViewModel(pointOfView: PointOfView, inputs: Omit<ViewModelIn
     secondaryStat: 'What the traveler can see from Earth.',
     streamMode: 'received' as const,
     subtitle: `Received Earth stream from ${formatTime(earthEmissionSeenByShip)}`,
+    telescopeLabel: 'Telescope view of earth',
     title: 'Earth POV',
     variant: 'earth' as const,
   }
@@ -574,14 +694,15 @@ function getReceivedViewModel(pointOfView: PointOfView, inputs: Omit<ViewModelIn
 type PopoverButtonProps = {
   active: boolean
   children: ReactNode
+  className?: string
   icon: ReactNode
   label: string
   onClick: () => void
 }
 
-function PopoverButton({ active, children, icon, label, onClick }: PopoverButtonProps) {
+function PopoverButton({ active, children, className, icon, label, onClick }: PopoverButtonProps) {
   return (
-    <div className="control-popover">
+    <div className={`control-popover ${className ?? ''}`}>
       <button
         className="popover-trigger"
         type="button"
@@ -851,6 +972,46 @@ function DistanceIcon() {
       <path d="M17 9l3 3-3 3" />
     </svg>
   )
+}
+
+function FullscreenIcon({ active }: { active: boolean }) {
+  if (active) {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9 4v5H4" />
+        <path d="M15 4v5h5" />
+        <path d="M9 20v-5H4" />
+        <path d="M15 20v-5h5" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 4H4v4" />
+      <path d="M16 4h4v4" />
+      <path d="M8 20H4v-4" />
+      <path d="M16 20h4v-4" />
+    </svg>
+  )
+}
+
+function MoreIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="5" cy="12" r="1.7" />
+      <circle cx="12" cy="12" r="1.7" />
+      <circle cx="19" cy="12" r="1.7" />
+    </svg>
+  )
+}
+
+function getShouldUseCompactControls(): boolean {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  return window.innerWidth <= 620 || (window.innerWidth <= 760 && window.innerHeight > window.innerWidth)
 }
 
 function clamp(value: number, min: number, max: number): number {

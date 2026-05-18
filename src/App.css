@@ -362,11 +362,11 @@ h1 {
   right: 14px;
   bottom: 12px;
   display: grid;
-  grid-template-columns: auto minmax(170px, 1fr) auto auto auto auto;
+  grid-template-columns: auto minmax(180px, 1fr) auto auto auto auto;
   align-items: center;
-  gap: 10px;
-  min-height: 64px;
-  padding: 10px;
+  gap: 8px;
+  min-height: 52px;
+  padding: 7px 8px;
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 8px;
   background: rgba(3, 8, 18, 0.88);
@@ -402,27 +402,15 @@ button svg {
 .play-button {
   display: grid;
   place-items: center;
-  width: 46px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border-radius: 999px;
 }
 
 .timeline-control {
-  display: grid;
-  grid-template-columns: minmax(140px, 1fr) auto;
-  align-items: center;
-  gap: 12px;
+  display: block;
   min-width: 0;
-}
-
-.timeline-control strong {
-  min-width: 112px;
-  color: var(--text-strong);
-  font-family: var(--mono);
-  font-size: 14px;
-  text-align: right;
-  white-space: nowrap;
 }
 
 input[type='range'] {
@@ -430,19 +418,22 @@ input[type='range'] {
   accent-color: var(--accent);
 }
 
-.reset-button,
-.popover-trigger {
-  min-height: 42px;
-}
-
 .control-popover {
   position: relative;
 }
 
-.popover-trigger {
+.popover-trigger,
+.secondary-control {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
+  min-height: 36px;
+  border-color: transparent;
+  background: transparent;
+  padding: 6px 8px;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .popover-trigger[aria-expanded='true'] {
@@ -452,6 +443,37 @@ input[type='range'] {
 
 .popover-trigger svg {
   fill: none;
+}
+
+.fullscreen-button svg {
+  fill: none;
+}
+
+.more-popover .popover-trigger svg {
+  fill: currentColor;
+  stroke: none;
+}
+
+.more-menu {
+  display: grid;
+  gap: 14px;
+}
+
+.more-menu-section {
+  display: grid;
+  gap: 8px;
+}
+
+.more-menu-section > span {
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.menu-fullscreen {
+  justify-content: center;
+  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .popover-panel {
@@ -554,34 +576,7 @@ input[type='range'] {
   }
 
   .control-rail {
-    grid-template-columns: auto minmax(150px, 1fr) auto;
-    grid-template-areas:
-      "play timeline reset"
-      "speed velocity distance";
-  }
-
-  .play-button {
-    grid-area: play;
-  }
-
-  .timeline-control {
-    grid-area: timeline;
-  }
-
-  .reset-button {
-    grid-area: reset;
-  }
-
-  .control-popover:nth-of-type(1) {
-    grid-area: speed;
-  }
-
-  .control-popover:nth-of-type(2) {
-    grid-area: velocity;
-  }
-
-  .control-popover:nth-of-type(3) {
-    grid-area: distance;
+    grid-template-columns: auto minmax(150px, 1fr) auto auto auto auto;
   }
 }
 
@@ -607,25 +602,47 @@ input[type='range'] {
     left: 8px;
     right: 8px;
     bottom: 8px;
-    grid-template-columns: auto minmax(120px, 1fr);
-    grid-template-areas:
-      "play timeline"
-      "reset speed"
-      "velocity distance";
-  }
-
-  .timeline-control {
-    grid-template-columns: 1fr;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 4px;
+    padding: 6px;
   }
 
-  .timeline-control strong {
-    min-width: 0;
-    text-align: left;
+  .popover-trigger,
+  .secondary-control {
+    gap: 4px;
+    min-height: 34px;
+    padding: 5px 6px;
+    font-size: 12px;
+  }
+
+  .more-popover .popover-trigger {
+    width: 34px;
+    justify-content: center;
+  }
+
+  .more-popover .popover-trigger span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .more-popover .popover-panel {
+    right: 0;
+    left: auto;
+    min-width: min(312px, calc(100vw - 20px));
   }
 
   .popover-panel {
     right: auto;
     left: 0;
+  }
+
+  .more-popover .popover-panel {
+    right: 0;
+    left: auto;
+    min-width: min(312px, calc(100vw - 20px));
   }
 }
