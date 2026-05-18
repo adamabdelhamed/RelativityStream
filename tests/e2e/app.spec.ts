@@ -86,6 +86,34 @@ test('opens and drives the full-screen RelativityStream POV view', async ({ page
   }
   expect(pipResizedBox.width).toBeGreaterThan(pipMovedBox.width + 20)
 
+  const signal = page.getByLabel('Signal propagation view')
+  const signalStartBox = await signal.boundingBox()
+  expect(signalStartBox).not.toBeNull()
+  if (!signalStartBox) {
+    throw new Error('Missing signal overlay bounding box')
+  }
+  await page.mouse.move(signalStartBox.x + 28, signalStartBox.y + 22)
+  await page.mouse.down()
+  await page.mouse.move(signalStartBox.x + 78, signalStartBox.y + 47)
+  await page.mouse.up()
+  const signalMovedBox = await signal.boundingBox()
+  expect(signalMovedBox).not.toBeNull()
+  if (!signalMovedBox) {
+    throw new Error('Missing moved signal overlay bounding box')
+  }
+  expect(signalMovedBox.x).toBeGreaterThan(signalStartBox.x + 20)
+
+  await page.mouse.move(signalMovedBox.x + signalMovedBox.width - 4, signalMovedBox.y + signalMovedBox.height - 4)
+  await page.mouse.down()
+  await page.mouse.move(signalMovedBox.x + signalMovedBox.width + 48, signalMovedBox.y + signalMovedBox.height + 32)
+  await page.mouse.up()
+  const signalResizedBox = await signal.boundingBox()
+  expect(signalResizedBox).not.toBeNull()
+  if (!signalResizedBox) {
+    throw new Error('Missing resized signal overlay bounding box')
+  }
+  expect(signalResizedBox.width).toBeGreaterThan(signalMovedBox.width + 20)
+
   await pip.click()
   await expect(page.getByRole('region', { name: 'Traveler POV', exact: true })).toBeVisible()
   await expect(page.getByLabel('Earth POV Telescope view of earth picture in picture')).toBeVisible()
@@ -165,6 +193,10 @@ test('collapses secondary controls behind more menu in portrait mobile', async (
   await expect(page.getByRole('button', { name: 'Play' })).toBeVisible()
   await expect(page.getByRole('slider', { name: 'Timeline' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'More controls' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Telescope' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'Signal' })).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByLabel('Traveler POV Telescope view of traveler picture in picture')).toBeVisible()
+  await expect(page.getByLabel('Signal propagation view')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '1x' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '0.90 c' })).toHaveCount(0)
 
@@ -197,5 +229,92 @@ test('collapses secondary controls behind more menu in portrait mobile', async (
     'aria-expanded',
     'false',
   )
+
+  await page.getByRole('button', { name: 'Signal' }).click()
+  await expect(page.getByRole('button', { name: 'Signal' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByLabel('Signal propagation view')).toBeVisible()
+  await expect(page.locator('.overlay-heading span', { hasText: 'signal' })).toBeVisible()
+  await expect(page.getByText('drag / resize')).toHaveCount(0)
+
+  const portraitLayout = await page.locator('.immersive-stage').evaluate((stage) => {
+    const primary = stage.querySelector('.three-tree-scene')
+    const secondary = stage.querySelector('.signal-overlay')
+    const controls = stage.querySelector('.control-rail')
+    const primaryBox = primary?.getBoundingClientRect()
+    const secondaryBox = secondary?.getBoundingClientRect()
+    const controlBox = controls?.getBoundingClientRect()
+
+    return {
+      controlTop: controlBox?.top,
+      layoutMode: stage.getAttribute('data-layout-mode'),
+      primaryHeight: primaryBox?.height,
+      secondaryBottom: secondaryBox?.bottom,
+      secondaryTop: secondaryBox?.top,
+    }
+  })
+  expect(portraitLayout.layoutMode).toBe('mobile-portrait')
+  expect(portraitLayout.primaryHeight).toBeGreaterThan(800)
+  expect(portraitLayout.secondaryTop).toBeGreaterThan(450)
+  expect(portraitLayout.secondaryBottom).toBeLessThan(portraitLayout.controlTop ?? 0)
+  expect(consoleErrors).toEqual([])
+})
+
+test('places the mobile landscape secondary view on the right without resize controls', async ({ page }) => {
+  const consoleErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      consoleErrors.push(message.text())
+    }
+  })
+
+  await page.setViewportSize({ width: 667, height: 375 })
+  await page.goto('/')
+
+  await expect(page.locator('.immersive-stage')).toHaveAttribute('data-layout-mode', 'mobile-landscape')
+  await expect(page.getByRole('button', { name: 'Telescope' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'Signal' })).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.getByRole('button', { name: '1x' })).toBeVisible()
+  await expect(page.getByLabel('Traveler POV Telescope view of traveler picture in picture')).toBeVisible()
+  await expect(page.getByLabel('Signal propagation view')).toHaveCount(0)
+
+  const streamLayout = await page.getByLabel('Traveler POV Telescope view of traveler picture in picture').evaluate((panel) => {
+    const box = panel.getBoundingClientRect()
+
+    return {
+      height: box.height,
+      left: box.left,
+      right: box.right,
+      viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
+    }
+  })
+  expect(streamLayout.left).toBeGreaterThan(streamLayout.viewportWidth * 0.5)
+  expect(streamLayout.right).toBeLessThanOrEqual(streamLayout.viewportWidth - 8)
+  expect(streamLayout.height).toBeGreaterThan(streamLayout.viewportHeight * 0.47)
+  expect(streamLayout.height).toBeLessThan(streamLayout.viewportHeight * 0.58)
+
+  await page.getByLabel('Traveler POV Telescope view of traveler picture in picture').click()
+  await expect(page.getByRole('region', { name: 'Traveler POV', exact: true })).toBeVisible()
+  await expect(page.getByLabel('Earth POV Telescope view of earth picture in picture')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Signal' }).click()
+  await expect(page.getByLabel('Signal propagation view')).toBeVisible()
+  await expect(page.locator('.overlay-heading span', { hasText: 'signal' })).toBeVisible()
+  await expect(page.locator('.signal-overlay .resize-corner')).toHaveCount(0)
+  await expect(page.getByText('drag / resize')).toHaveCount(0)
+
+  const telescopeLayout = await page.getByLabel('Signal propagation view').evaluate((panel) => {
+    const box = panel.getBoundingClientRect()
+
+    return {
+      height: box.height,
+      left: box.left,
+      viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
+    }
+  })
+  expect(telescopeLayout.left).toBeGreaterThan(telescopeLayout.viewportWidth * 0.5)
+  expect(telescopeLayout.height).toBeGreaterThan(telescopeLayout.viewportHeight * 0.47)
+  expect(telescopeLayout.height).toBeLessThan(telescopeLayout.viewportHeight * 0.58)
   expect(consoleErrors).toEqual([])
 })

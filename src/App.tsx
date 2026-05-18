@@ -22,6 +22,8 @@ import {
 import './App.css'
 
 type PointOfView = 'earth' | 'traveler'
+type LayoutMode = 'desktop' | 'mobile-landscape' | 'mobile-portrait'
+type MobileSecondaryView = 'telescope' | 'signal'
 type PanelPosition = { height?: number; left: number; top: number; width: number }
 type DragState = {
   pointerId: number
@@ -36,6 +38,14 @@ type DragState = {
 type SettingsMenu = 'speed' | 'velocity' | 'distance' | null
 type CompactMenu = 'more' | null
 
+const LAYOUT = {
+  desktopMinWidth: 761,
+  mobileLandscapeOverlayHeightRatio: 0.6,
+  mobileLandscapeOverlayInset: 12,
+  mobileLandscapeOverlayWidthRatio: 0.44,
+  mobilePortraitPrimaryRatio: 0.58,
+} as const
+
 function App() {
   const [velocity, setVelocity] = useState(DEFAULT_VELOCITY_FRACTION_OF_C)
   const [turnaroundDistance, setTurnaroundDistance] = useState(DEFAULT_TURNAROUND_DISTANCE_LY)
@@ -46,7 +56,10 @@ function App() {
   const [activeMenu, setActiveMenu] = useState<SettingsMenu>(null)
   const [compactMenu, setCompactMenu] = useState<CompactMenu>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [useCompactControls, setUseCompactControls] = useState(getShouldUseCompactControls)
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>(getLayoutMode)
+  const [mobileSecondaryView, setMobileSecondaryView] = useState<MobileSecondaryView>('telescope')
+  const useCompactControls = getShouldUseCompactControls(layoutMode)
+  const isMobileLayout = layoutMode !== 'desktop'
   const [pipPosition, setPipPosition] = useState<PanelPosition>({
     height: 210,
     left: window.innerWidth - 390,
@@ -108,6 +121,7 @@ function App() {
     travelerAgeSeenByEarth,
     travelerPositionSeenByEarth,
   })
+  const mainCameraFraming = getMainCameraFraming(layoutMode)
 
   useEffect(() => {
     if (!isPlaying) {
@@ -132,7 +146,7 @@ function App() {
 
   useEffect(() => {
     const syncControlLayout = () => {
-      setUseCompactControls(getShouldUseCompactControls())
+      setLayoutMode(getLayoutMode())
     }
 
     syncControlLayout()
@@ -244,6 +258,10 @@ function App() {
   }
 
   const startPipInteraction = (event: ReactPointerEvent<HTMLElement>) => {
+    if (isMobileLayout) {
+      return
+    }
+
     event.preventDefault()
     event.stopPropagation()
     const isResize = Boolean((event.target as HTMLElement).closest('.resize-corner'))
@@ -311,10 +329,16 @@ function App() {
   }
 
   const startSignalDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    if (isMobileLayout) {
+      return
+    }
+
     event.preventDefault()
+    const isResize = Boolean((event.target as HTMLElement).closest('.resize-corner'))
     signalDrag.current = {
+      height: signalPosition.height ?? 220,
       left: signalPosition.left,
-      mode: 'move',
+      mode: isResize ? 'resize' : 'move',
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
@@ -335,10 +359,22 @@ function App() {
     }
 
     event.preventDefault()
+    const dx = event.clientX - drag.startX
+    const dy = event.clientY - drag.startY
+
+    if (drag.mode === 'resize') {
+      setSignalPosition((current) => ({
+        ...current,
+        height: clamp((drag.height ?? 220) + dy, 190, Math.max(190, window.innerHeight - 92)),
+        width: clamp(drag.width + dx, 300, Math.max(300, window.innerWidth - 24)),
+      }))
+      return
+    }
+
     setSignalPosition((current) => ({
       ...current,
-      left: clamp(drag.left + event.clientX - drag.startX, 12, window.innerWidth - current.width - 12),
-      top: clamp(drag.top + event.clientY - drag.startY, 12, window.innerHeight - 220),
+      left: clamp(drag.left + dx, 12, window.innerWidth - current.width - 12),
+      top: clamp(drag.top + dy, 12, window.innerHeight - (current.height ?? 220) - 88),
     }))
   }
 
@@ -393,9 +429,16 @@ function App() {
 
   return (
     <main className="app-shell" aria-label="RelativityStream interactive simulation">
-      <section className={`immersive-stage ${mainView.variant}`} aria-label={`${mainView.title} full-screen POV`}>
+      <section
+        className={`immersive-stage ${mainView.variant} layout-${layoutMode}`}
+        aria-label={`${mainView.title} full-screen POV`}
+        data-layout-mode={layoutMode}
+      >
         <ThreeTreeScene
           ageTotal={sample.totalEarthTime}
+          cameraDistanceScale={mainCameraFraming.cameraDistanceScale}
+          focusOffsetX={mainCameraFraming.focusOffsetX}
+          focusOffsetY={mainCameraFraming.focusOffsetY}
           localAge={mainView.localAge}
           streamMode={mainView.streamMode}
           variant={mainView.variant}
@@ -421,39 +464,77 @@ function App() {
           </div>
         </section>
 
-        <aside
-          className="pip-panel"
-          style={{
-            height: pipPosition.height,
-            left: pipPosition.left,
-            top: pipPosition.top,
-            width: pipPosition.width,
-          }}
-          aria-label={`${pipView.title} ${pipView.telescopeLabel} picture in picture`}
-          onPointerDown={startPipInteraction}
-          onContextMenu={(event) => event.preventDefault()}
-        >
-          <ThreeTreeScene
-            ageTotal={sample.totalEarthTime}
-            localAge={pipView.localAge}
-            streamMode={pipView.streamMode}
-            variant={pipView.variant}
-          />
-          <div className="pip-copy">
-            <span>{pipView.telescopeLabel}</span>
-            <strong>{formatTime(pipView.localAge)}</strong>
-          </div>
-          <span className="resize-corner" aria-hidden="true" />
-        </aside>
+        {!isMobileLayout || mobileSecondaryView === 'telescope' ? (
+          <aside
+            className="pip-panel"
+            style={isMobileLayout ? undefined : {
+              height: pipPosition.height,
+              left: pipPosition.left,
+              top: pipPosition.top,
+              width: pipPosition.width,
+            }}
+            aria-label={`${pipView.title} ${pipView.telescopeLabel} picture in picture`}
+            onClick={isMobileLayout ? togglePov : undefined}
+            onPointerDown={isMobileLayout ? undefined : startPipInteraction}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <ThreeTreeScene
+              ageTotal={sample.totalEarthTime}
+              localAge={pipView.localAge}
+              streamMode={pipView.streamMode}
+              variant={pipView.variant}
+            />
+            <div className="pip-copy">
+              <span>{pipView.telescopeLabel}</span>
+              <strong>{formatTime(pipView.localAge)}</strong>
+            </div>
+            {isMobileLayout ? null : <span className="resize-corner" aria-hidden="true" />}
+          </aside>
+        ) : null}
 
-        <SignalOverlay
-          coordinateTime={sample.coordinateTime}
-          ghostShipPosition={travelerPositionSeenByEarth}
-          outboundDuration={scenario.outboundDuration}
-          position={signalPosition}
-          velocity={velocity}
-          onPointerDown={startSignalDrag}
-        />
+        {isMobileLayout ? (
+          mobileSecondaryView === 'signal' ? (
+            <SignalOverlay
+              coordinateTime={sample.coordinateTime}
+              draggable={false}
+              ghostShipPosition={travelerPositionSeenByEarth}
+              mobile
+              outboundDuration={scenario.outboundDuration}
+              position={signalPosition}
+              velocity={velocity}
+              onPointerDown={startSignalDrag}
+            />
+          ) : null
+        ) : (
+          <SignalOverlay
+            coordinateTime={sample.coordinateTime}
+            draggable
+            ghostShipPosition={travelerPositionSeenByEarth}
+            outboundDuration={scenario.outboundDuration}
+            position={signalPosition}
+            velocity={velocity}
+            onPointerDown={startSignalDrag}
+          />
+        )}
+
+        {isMobileLayout ? (
+          <div className="mobile-secondary-selector" aria-label="Secondary view selector">
+            <button
+              type="button"
+              aria-pressed={mobileSecondaryView === 'telescope'}
+              onClick={() => setMobileSecondaryView('telescope')}
+            >
+              Telescope
+            </button>
+            <button
+              type="button"
+              aria-pressed={mobileSecondaryView === 'signal'}
+              onClick={() => setMobileSecondaryView('signal')}
+            >
+              Signal
+            </button>
+          </div>
+        ) : null}
 
         <section className="control-rail" aria-label="Scenario controls" ref={controlsRef}>
           <button
@@ -804,7 +885,9 @@ function NumericSlider({ label, max, min, onChange, onDismiss, step, suffix, val
 
 type SignalOverlayProps = {
   coordinateTime: number
+  draggable: boolean
   ghostShipPosition: number
+  mobile?: boolean
   onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void
   outboundDuration: number
   position: PanelPosition
@@ -813,7 +896,9 @@ type SignalOverlayProps = {
 
 function SignalOverlay({
   coordinateTime,
+  draggable,
   ghostShipPosition,
+  mobile = false,
   onPointerDown,
   outboundDuration,
   position,
@@ -853,19 +938,20 @@ function SignalOverlay({
 
   return (
     <aside
-      className="signal-overlay"
-      style={{
+      className={`signal-overlay ${mobile ? 'mobile-signal-overlay' : ''}`}
+      style={mobile ? undefined : {
+        height: position.height,
         left: position.left,
         top: position.top,
         width: position.width,
       }}
       aria-label="Signal propagation view"
-      onPointerDown={onPointerDown}
+      onPointerDown={draggable ? onPointerDown : undefined}
       onContextMenu={(event) => event.preventDefault()}
     >
       <div className="overlay-heading">
         <p>Signal propagation</p>
-        <span>drag</span>
+        <span>{draggable ? 'drag / resize' : 'signal'}</span>
       </div>
       <svg
         className="overlay-diagram"
@@ -925,6 +1011,7 @@ function SignalOverlay({
         <text className="overlay-hint vertical" x={earthX - 30} y={(topY + bottomY) / 2}>later</text>
         <text className="overlay-hint" x={farX - 132} y={bottomY - 10}>farther from Earth</text>
       </svg>
+      {draggable ? <span className="resize-corner" aria-hidden="true" /> : null}
     </aside>
   )
 }
@@ -1006,12 +1093,44 @@ function MoreIcon() {
   )
 }
 
-function getShouldUseCompactControls(): boolean {
+function getLayoutMode(): LayoutMode {
   if (typeof window === 'undefined') {
-    return false
+    return 'desktop'
   }
 
-  return window.innerWidth <= 620 || (window.innerWidth <= 760 && window.innerHeight > window.innerWidth)
+  if (window.innerWidth >= LAYOUT.desktopMinWidth) {
+    return 'desktop'
+  }
+
+  return window.innerWidth > window.innerHeight ? 'mobile-landscape' : 'mobile-portrait'
+}
+
+function getShouldUseCompactControls(layoutMode: LayoutMode): boolean {
+  return layoutMode === 'mobile-portrait'
+}
+
+function getMainCameraFraming(layoutMode: LayoutMode) {
+  if (layoutMode === 'mobile-landscape') {
+    return {
+      cameraDistanceScale: 1.2,
+      focusOffsetX: -0.34,
+      focusOffsetY: -0.22,
+    }
+  }
+
+  if (layoutMode === 'mobile-portrait') {
+    return {
+      cameraDistanceScale: 1.18,
+      focusOffsetX: 0,
+      focusOffsetY: -0.2,
+    }
+  }
+
+  return {
+    cameraDistanceScale: 1,
+    focusOffsetX: 0,
+    focusOffsetY: 0,
+  }
 }
 
 function clamp(value: number, min: number, max: number): number {

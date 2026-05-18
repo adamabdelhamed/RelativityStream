@@ -1,8 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import App from './App'
 
 describe('App', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 768 })
+  })
+
   it('renders the full-screen POV simulation shell', () => {
     render(<App />)
 
@@ -92,6 +97,44 @@ describe('App', () => {
 
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth })
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalHeight })
+  })
+
+  it('uses telescope as the default mobile secondary view and can switch to signal', () => {
+    const originalWidth = window.innerWidth
+    const originalHeight = window.innerHeight
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 })
+
+    render(<App />)
+
+    expect(screen.getByRole('button', { name: 'Telescope' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Signal' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByLabelText('Traveler POV Telescope view of traveler picture in picture')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Signal propagation view')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Signal' }))
+
+    expect(screen.getByRole('button', { name: 'Telescope' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Signal' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByLabelText('Traveler POV Telescope view of traveler picture in picture')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Signal propagation view')).toBeInTheDocument()
+    expect(screen.queryByText('drag / resize')).not.toBeInTheDocument()
+    expect(screen.getByText('signal')).toBeInTheDocument()
+
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalHeight })
+  })
+
+  it('switches POV from a mobile telescope tap', () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 })
+
+    render(<App />)
+
+    fireEvent.click(screen.getByLabelText('Traveler POV Telescope view of traveler picture in picture'))
+
+    expect(screen.getByLabelText('Traveler POV')).toBeInTheDocument()
+    expect(screen.getByLabelText('Earth POV Telescope view of earth picture in picture')).toBeInTheDocument()
   })
 
   it('keeps numeric text edits as drafts until blur, enter, or escape', () => {
@@ -188,6 +231,25 @@ describe('App', () => {
     expect(screen.getByLabelText('Earth POV')).toBeInTheDocument()
     expect(screen.getByLabelText('Traveler POV Telescope view of traveler picture in picture')).toBeInTheDocument()
     expect(fireEvent.contextMenu(pip)).toBe(false)
+  })
+
+  it('drags and resizes the desktop signal propagation overlay', () => {
+    const { container } = render(<App />)
+
+    const signal = screen.getByLabelText('Signal propagation view')
+    fireEvent.pointerDown(signal, { clientX: 80, clientY: 80, pointerId: 11 })
+    fireEvent.pointerMove(document, { clientX: 130, clientY: 112, pointerId: 11 })
+    fireEvent.pointerUp(document, { clientX: 130, clientY: 112, pointerId: 11 })
+
+    expect(signal).toHaveStyle({ left: '74px', top: '380px' })
+
+    const resizeCorner = container.querySelector('.signal-overlay .resize-corner')
+    expect(resizeCorner).not.toBeNull()
+    fireEvent.pointerDown(resizeCorner as Element, { clientX: 454, clientY: 672, pointerId: 12 })
+    fireEvent.pointerMove(document, { clientX: 494, clientY: 702, pointerId: 12 })
+    fireEvent.pointerUp(document, { clientX: 494, clientY: 702, pointerId: 12 })
+
+    expect(signal).toHaveStyle({ width: '470px', height: '250px' })
   })
 
   it('highlights the turnaround signal in the propagation overlay', () => {

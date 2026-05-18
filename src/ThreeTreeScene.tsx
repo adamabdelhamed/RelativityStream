@@ -28,6 +28,9 @@ type SceneVariant = 'earth' | 'space'
 
 type ThreeTreeSceneProps = {
   ageTotal: number
+  cameraDistanceScale?: number
+  focusOffsetX?: number
+  focusOffsetY?: number
   localAge: number
   streamMode: 'local' | 'received'
   variant: SceneVariant
@@ -784,16 +787,19 @@ function createScene(mount: HTMLDivElement, variant: SceneVariant): SceneObjects
 
 export function ThreeTreeScene({
   ageTotal,
+  cameraDistanceScale = 1,
+  focusOffsetX = 0,
+  focusOffsetY = 0,
   localAge,
   streamMode,
   variant,
 }: ThreeTreeSceneProps) {
   const mountRef = useRef<HTMLDivElement | null>(null)
-  const propsRef = useRef({ ageTotal, localAge, streamMode, variant })
+  const propsRef = useRef({ ageTotal, cameraDistanceScale, focusOffsetX, focusOffsetY, localAge, streamMode, variant })
 
   useEffect(() => {
-    propsRef.current = { ageTotal, localAge, streamMode, variant }
-  }, [ageTotal, localAge, streamMode, variant])
+    propsRef.current = { ageTotal, cameraDistanceScale, focusOffsetX, focusOffsetY, localAge, streamMode, variant }
+  }, [ageTotal, cameraDistanceScale, focusOffsetX, focusOffsetY, localAge, streamMode, variant])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -843,8 +849,16 @@ export function ThreeTreeScene({
         const tree = objects.trees[index]
         updateTree(tree, visualTreeYear, generations[index], current.variant, elapsed)
       }
-      objects.camera.position.set(TREE_CAMERA_POSITION.x, TREE_CAMERA_POSITION.y, TREE_CAMERA_POSITION.z)
-      objects.camera.lookAt(TREE_CAMERA_TARGET.x, TREE_CAMERA_TARGET.y, TREE_CAMERA_TARGET.z)
+      objects.camera.position.set(
+        TREE_CAMERA_POSITION.x * current.cameraDistanceScale,
+        TREE_CAMERA_POSITION.y * current.cameraDistanceScale,
+        TREE_CAMERA_POSITION.z * current.cameraDistanceScale,
+      )
+      objects.camera.lookAt(
+        TREE_CAMERA_TARGET.x + current.focusOffsetX * 7,
+        TREE_CAMERA_TARGET.y + current.focusOffsetY * 4,
+        TREE_CAMERA_TARGET.z,
+      )
       objects.renderer.render(objects.scene, objects.camera)
     }
 
