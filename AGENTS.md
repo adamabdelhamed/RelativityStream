@@ -578,3 +578,7 @@ manual review requested from the human owner.
 ## NonIntegratedCode
 
 Offline research may result in files being placed in the top level NonIntegratedCode folder. You may be asked to integrate code found in this file into the main project. When doing do be sure to learn from the non integrated code, but do not break the patterns of the repo when integrating unless explicitly asked to.
+
+## Backlog
+
+The Backlog.md file contains known work that you may be assigned to complete.
