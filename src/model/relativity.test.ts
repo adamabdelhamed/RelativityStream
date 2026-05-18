@@ -5,6 +5,9 @@ import {
   earthReceivesShipSignal,
   earthReceivesTurnaroundTime,
   lorentzFactor,
+  observedDopplerColorShift,
+  observedSignalMotion,
+  observedStreamRate,
   sampleScenario,
   shipEmissionTimeReceivedOnEarth,
   shipPosition,
@@ -60,6 +63,28 @@ describe('relativity model', () => {
   it('models outbound stream as slower and inbound stream as faster for Earth', () => {
     expect(earthApparentShipRate(scenario, 'outbound')).toBeCloseTo(1 / 3)
     expect(earthApparentShipRate(scenario, 'inbound')).toBeCloseTo(3)
+  })
+
+  it('reports redshift for receding received streams and blueshift for approaching streams', () => {
+    expect(observedSignalMotion(scenario, 'earth', 0)).toBe('stationary')
+    expect(observedDopplerColorShift(scenario, 'earth', 0)).toBe('neutral')
+    expect(observedStreamRate(scenario, 'earth', 0)).toBe(1)
+
+    expect(observedSignalMotion(scenario, 'earth', 3)).toBe('receding')
+    expect(observedDopplerColorShift(scenario, 'earth', 3)).toBe('redshift')
+    expect(observedStreamRate(scenario, 'earth', 3)).toBeCloseTo(1 / 3)
+
+    expect(observedSignalMotion(scenario, 'earth', 9)).toBe('approaching')
+    expect(observedDopplerColorShift(scenario, 'earth', 9)).toBe('blueshift')
+    expect(observedStreamRate(scenario, 'earth', 9)).toBeCloseTo(3)
+  })
+
+  it('switches the traveler received stream from slow to fast at turnaround', () => {
+    expect(observedDopplerColorShift(scenario, 'ship', 5.9)).toBe('redshift')
+    expect(observedStreamRate(scenario, 'ship', 5.9)).toBeCloseTo(1 / 3)
+
+    expect(observedDopplerColorShift(scenario, 'ship', 6)).toBe('blueshift')
+    expect(observedStreamRate(scenario, 'ship', 6)).toBeCloseTo(3)
   })
 
   it('makes Earth elapsed time greater than ship proper time at reunion', () => {

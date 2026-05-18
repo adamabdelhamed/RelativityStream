@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 test('opens and drives the full-screen RelativityStream POV view', async ({ page }) => {
+  test.setTimeout(45000)
   const consoleErrors: string[] = []
   page.on('console', (message) => {
     if (message.type() === 'error') {
@@ -13,6 +14,9 @@ test('opens and drives the full-screen RelativityStream POV view', async ({ page
   await expect(page).toHaveTitle('RelativityStream')
   await expect(page.getByText('Relativity Simulator')).toBeVisible()
   await expect(page.getByRole('region', { name: 'Earth POV', exact: true })).toBeVisible()
+  await expect(page.getByText('Traveler appears normal')).toBeVisible()
+  await expect(page.getByText(/Local clock/)).toHaveCount(0)
+  await expect(page.getByText(/Received ship/)).toHaveCount(0)
   await expect(page.getByLabel('Traveler POV Telescope view of traveler picture in picture')).toBeVisible()
   await expect(page.getByLabel('Signal propagation view')).toBeVisible()
   await expect(page.getByText('later')).toBeVisible()
@@ -30,11 +34,20 @@ test('opens and drives the full-screen RelativityStream POV view', async ({ page
   const pipCanvas = page.getByLabel('Traveler 3D tree aged to 0.0 y').locator('canvas')
   await expect(mainCanvas).toBeVisible()
   await expect(pipCanvas).toBeVisible()
+  await expect(page.getByLabel('Traveler 3D tree aged to 0.0 y')).toHaveAttribute('data-nearby-planet', 'visible')
+  await expect(page.getByLabel('Traveler 3D tree aged to 0.0 y')).toHaveAttribute('data-nearby-planet-scale', '1.000')
+  await expect(page.getByLabel('Traveler 3D tree aged to 0.0 y')).toHaveAttribute('data-signal-shift', 'neutral')
+  await expect(page.getByLabel('Traveler 3D tree aged to 0.0 y')).toHaveAttribute('data-star-motion', 'stopped')
   await expect(page.getByLabel('Earth 3D tree aged to 0.0 y')).toHaveAttribute('data-decay-pile-generations', '')
 
   await page.getByRole('slider', { name: 'Timeline' }).fill('6')
   await expect(page.getByRole('slider', { name: 'Timeline' })).toHaveValue('6')
-  await expect(page.getByText(/Received ship 1.4 y at 2.84 ly/)).toBeVisible()
+  await expect(page.getByText('Turnaround not visible yet')).toBeVisible()
+  await expect(page.getByText('Traveler appears to age slowly')).toBeVisible()
+  await expect(page.getByLabel('Traveler 3D tree aged to 1.4 y')).toHaveAttribute('data-signal-shift', 'redshift')
+  await expect(page.getByLabel('Traveler 3D tree aged to 1.4 y')).toHaveAttribute('data-nearby-planet', 'hidden')
+  await page.getByRole('slider', { name: 'Timeline' }).fill('40')
+  await expect(page.getByLabel('Traveler 3D tree aged to 9.2 y')).toHaveAttribute('data-nearby-planet', 'hidden')
   await page.getByRole('slider', { name: 'Timeline' }).fill('111.2')
   await expect(page.getByText('turnaround signal')).toBeVisible()
   await page.getByRole('slider', { name: 'Timeline' }).fill('6')

@@ -15,7 +15,14 @@ describe('App', () => {
     expect(screen.queryByRole('heading', { name: 'RelativityStream' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('Earth POV')).toBeInTheDocument()
     expect(screen.getByLabelText('Traveler POV Telescope view of traveler picture in picture')).toBeInTheDocument()
+    expect(screen.queryByText(/Local clock/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Received ship/)).not.toBeInTheDocument()
+    expect(screen.getByText('Traveler appears normal')).toBeInTheDocument()
     expect(screen.getByLabelText('Signal propagation view')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Traveler 3D tree aged to 0.0 y' })).toHaveAttribute('data-nearby-planet', 'visible')
+    expect(screen.getByRole('img', { name: 'Traveler 3D tree aged to 0.0 y' })).toHaveAttribute('data-nearby-planet-scale', '1.000')
+    expect(screen.getByRole('img', { name: 'Traveler 3D tree aged to 0.0 y' })).toHaveAttribute('data-signal-shift', 'neutral')
+    expect(screen.getByRole('img', { name: 'Traveler 3D tree aged to 0.0 y' })).toHaveAttribute('data-star-motion', 'stopped')
     expect(screen.getByText('later')).toBeInTheDocument()
     expect(screen.getByText('farther from Earth')).toBeInTheDocument()
     expect(screen.queryByText('0.0 y / 222.2 y')).not.toBeInTheDocument()
@@ -185,6 +192,7 @@ describe('App', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Play' }))
     expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /Traveler 3D tree aged to/ })).toHaveAttribute('data-star-motion', 'active')
 
     fireEvent.change(screen.getByRole('slider', { name: 'Timeline' }), {
       target: { value: '222.2' },
@@ -203,9 +211,28 @@ describe('App', () => {
     })
 
     expect(screen.getByRole('slider', { name: 'Timeline' })).toHaveValue('6')
-    expect(screen.getByText(/Received ship 1.4 y at 2.84 ly/)).toBeInTheDocument()
+    expect(screen.getByText('Turnaround not visible yet')).toBeInTheDocument()
+    expect(screen.getByText('Traveler appears to age slowly')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Earth 3D tree aged to 6.0 y' })).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: 'Traveler 3D tree aged to 1.4 y' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Traveler 3D tree aged to 1.4 y' })).toHaveAttribute('data-signal-shift', 'redshift')
+    expect(screen.getByRole('img', { name: 'Traveler 3D tree aged to 1.4 y' })).toHaveAttribute('data-nearby-planet', 'hidden')
+  })
+
+  it('shrinks then hides the nearby planet once travel starts', () => {
+    render(<App />)
+
+    fireEvent.change(screen.getByRole('slider', { name: 'Timeline' }), {
+      target: { value: '0.2' },
+    })
+    const earlyTraveler = screen.getByRole('img', { name: /Traveler 3D tree aged to/ })
+    expect(earlyTraveler).toHaveAttribute('data-nearby-planet', 'visible')
+    expect(Number(earlyTraveler.getAttribute('data-nearby-planet-scale'))).toBeLessThan(1)
+
+    fireEvent.change(screen.getByRole('slider', { name: 'Timeline' }), {
+      target: { value: '40' },
+    })
+
+    expect(screen.getByRole('img', { name: /Traveler 3D tree aged to/ })).toHaveAttribute('data-nearby-planet', 'hidden')
   })
 
   it('switches POV from an in-place picture-in-picture click', () => {

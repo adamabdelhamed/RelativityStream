@@ -1,5 +1,8 @@
 import {
   assertValidVelocity,
+  dopplerColorShiftForMotion,
+  type DopplerColorShift,
+  type RelativeSignalMotion,
   properTimeForCoordinateDuration,
   relativisticDopplerRate,
 } from './relativity'
@@ -10,6 +13,7 @@ export type Scenario = {
 }
 
 export type ScenarioPhase = 'outbound' | 'inbound' | 'reunion'
+export type Observer = 'earth' | 'ship'
 
 export type ScenarioSample = {
   coordinateTime: number
@@ -120,4 +124,48 @@ export function earthApparentShipRate(
     scenario.velocity,
     phase === 'outbound' ? 'receding' : 'approaching',
   )
+}
+
+export function observedSignalMotion(
+  scenario: Scenario,
+  observer: Observer,
+  observedCoordinateTime: number,
+): RelativeSignalMotion {
+  validateScenario(scenario)
+  const phase = scenarioPhase(scenario, observedCoordinateTime)
+
+  if (phase === 'reunion' || shipPosition(scenario, observedCoordinateTime) <= Number.EPSILON) {
+    return 'stationary'
+  }
+
+  if (observer === 'earth') {
+    return phase === 'outbound' ? 'receding' : 'approaching'
+  }
+
+  return phase === 'outbound' ? 'receding' : 'approaching'
+}
+
+export function observedDopplerColorShift(
+  scenario: Scenario,
+  observer: Observer,
+  observedCoordinateTime: number,
+): DopplerColorShift {
+  return dopplerColorShiftForMotion(
+    scenario.velocity,
+    observedSignalMotion(scenario, observer, observedCoordinateTime),
+  )
+}
+
+export function observedStreamRate(
+  scenario: Scenario,
+  observer: Observer,
+  observedCoordinateTime: number,
+): number {
+  const motion = observedSignalMotion(scenario, observer, observedCoordinateTime)
+
+  if (motion === 'stationary') {
+    return 1
+  }
+
+  return relativisticDopplerRate(scenario.velocity, motion)
 }

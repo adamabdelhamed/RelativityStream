@@ -31,3 +31,19 @@ export function relativisticDopplerRate(
 
   return direction === 'approaching' ? rate : 1 / rate
 }
+
+export type RelativeSignalMotion = 'approaching' | 'receding' | 'stationary'
+export type DopplerColorShift = 'blueshift' | 'redshift' | 'neutral'
+
+export function dopplerColorShiftForMotion(
+  velocity: number,
+  motion: RelativeSignalMotion,
+): DopplerColorShift {
+  assertValidVelocity(velocity)
+
+  if (velocity === 0 || motion === 'stationary') {
+    return 'neutral'
+  }
+
+  return motion === 'approaching' ? 'blueshift' : 'redshift'
+}

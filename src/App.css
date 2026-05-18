@@ -36,6 +36,33 @@
   height: 100%;
 }
 
+.three-tree-scene[data-stream-mode='received'][data-signal-shift='redshift'] canvas {
+  filter: sepia(0.95) saturate(3.4) hue-rotate(315deg) brightness(0.82) contrast(1.14);
+}
+
+.three-tree-scene[data-stream-mode='received'][data-signal-shift='blueshift'] canvas {
+  filter: sepia(0.32) saturate(2.9) hue-rotate(165deg) brightness(1.22) contrast(1.08);
+}
+
+.three-tree-scene[data-stream-mode='received'][data-signal-shift='redshift']::before,
+.three-tree-scene[data-stream-mode='received'][data-signal-shift='blueshift']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.three-tree-scene[data-stream-mode='received'][data-signal-shift='redshift']::before {
+  background: rgba(194, 36, 20, 0.34);
+  mix-blend-mode: color;
+}
+
+.three-tree-scene[data-stream-mode='received'][data-signal-shift='blueshift']::before {
+  background: rgba(40, 156, 255, 0.28);
+  mix-blend-mode: screen;
+}
+
 .view-vignette {
   position: absolute;
   inset: 0;
@@ -104,6 +131,10 @@ h1 {
   gap: 10px;
   max-width: calc(100vw - 48px);
   pointer-events: none;
+}
+
+.view-card:has(.view-stat-row:empty) {
+  display: none;
 }
 
 .view-card p {

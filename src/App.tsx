@@ -1,13 +1,15 @@
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  earthApparentShipRate,
   earthEmissionTimeReceivedOnShip,
   earthReceivesTurnaroundTime,
+  observedDopplerColorShift,
+  observedStreamRate,
   sampleScenario,
   shipEmissionTimeReceivedOnEarth,
   shipPosition,
   shipProperTime,
 } from './model'
+import type { DopplerColorShift } from './model'
 import { ThreeTreeScene } from './ThreeTreeScene'
 import {
   DEFAULT_SIMULATION_SPEED,
@@ -45,6 +47,9 @@ const LAYOUT = {
   mobileLandscapeOverlayWidthRatio: 0.44,
   mobilePortraitPrimaryRatio: 0.58,
 } as const
+const MAX_NEAR_EARTH_PLANET_DISTANCE_LY = 8
+const MIN_NEAR_EARTH_PLANET_DISTANCE_LY = 0.15
+const NEAR_EARTH_PLANET_DISTANCE_RATIO = 0.04
 
 function App() {
   const [velocity, setVelocity] = useState(DEFAULT_VELOCITY_FRACTION_OF_C)
@@ -99,25 +104,42 @@ function App() {
   )
   const travelerAgeSeenByEarth = shipProperTime(scenario, shipEmissionSeenByEarth)
   const travelerPositionSeenByEarth = shipPosition(scenario, shipEmissionSeenByEarth)
-  const streamRate =
-    sample.phase === 'reunion'
-      ? 1
-      : earthApparentShipRate(scenario, sample.phase)
+  const nearbyPlanetFadeDistance = Math.min(
+    MAX_NEAR_EARTH_PLANET_DISTANCE_LY,
+    Math.max(
+      MIN_NEAR_EARTH_PLANET_DISTANCE_LY,
+      turnaroundDistance * NEAR_EARTH_PLANET_DISTANCE_RATIO * (1 - velocity),
+    ),
+  )
+  const travelerNearbyPlanetScale = planetScaleForDistance(sample.shipPosition, nearbyPlanetFadeDistance)
+  const observedTravelerNearbyPlanetScale = planetScaleForDistance(
+    travelerPositionSeenByEarth,
+    nearbyPlanetFadeDistance,
+  )
+  const starMotionActive = isPlaying && sample.phase !== 'reunion'
+  const earthObservedTravelerRate = observedStreamRate(scenario, 'earth', shipEmissionSeenByEarth)
+  const earthObservedTravelerShift = observedDopplerColorShift(scenario, 'earth', shipEmissionSeenByEarth)
+  const travelerObservedEarthRate = observedStreamRate(scenario, 'ship', sample.coordinateTime)
+  const travelerObservedEarthShift = observedDopplerColorShift(scenario, 'ship', sample.coordinateTime)
   const isEarthPov = pointOfView === 'earth'
   const mainView = getViewModel(pointOfView, {
     earthEmissionSeenByShip,
+    earthObservedTravelerRate,
     hasEarthSeenTurnaround,
     sample,
     shipEmissionSeenByEarth,
-    streamRate,
+    travelerObservedEarthRate,
     travelerAgeSeenByEarth,
     travelerPositionSeenByEarth,
   })
   const pipView = getReceivedViewModel(isEarthPov ? 'traveler' : 'earth', {
     earthEmissionSeenByShip,
+    earthObservedTravelerRate,
+    earthObservedTravelerShift,
     sample,
     shipEmissionSeenByEarth,
-    streamRate,
+    travelerObservedEarthRate,
+    travelerObservedEarthShift,
     travelerAgeSeenByEarth,
     travelerPositionSeenByEarth,
   })
@@ -205,7 +227,7 @@ function App() {
       return
     }
 
-    if (coordinateTime >= timelineMax) {
+    if (sample.coordinateTime >= sample.totalEarthTime - 0.05 || coordinateTime >= timelineMax) {
       setCoordinateTime(0)
     }
 
@@ -440,6 +462,9 @@ function App() {
           focusOffsetX={mainCameraFraming.focusOffsetX}
           focusOffsetY={mainCameraFraming.focusOffsetY}
           localAge={mainView.localAge}
+          nearbyPlanetScale={mainView.variant === 'space' ? travelerNearbyPlanetScale : 0}
+          signalShift="neutral"
+          starMotionActive={mainView.variant === 'space' && starMotionActive}
           streamMode={mainView.streamMode}
           variant={mainView.variant}
         />
@@ -456,11 +481,9 @@ function App() {
         </header>
 
         <section className="view-card" aria-label={mainView.title}>
-          <p>{mainView.subtitle}</p>
+          {mainView.subtitle ? <p>{mainView.subtitle}</p> : null}
           <div className="view-stat-row">
-            <span>{mainView.primaryStat}</span>
-            <span>{mainView.secondaryStat}</span>
-            <span>{mainView.note}</span>
+            {mainView.stats.map((stat) => <span key={stat}>{stat}</span>)}
           </div>
         </section>
 
@@ -481,6 +504,9 @@ function App() {
             <ThreeTreeScene
               ageTotal={sample.totalEarthTime}
               localAge={pipView.localAge}
+              nearbyPlanetScale={pipView.variant === 'space' ? observedTravelerNearbyPlanetScale : 0}
+              signalShift={pipView.signalShift}
+              starMotionActive={pipView.variant === 'space' && starMotionActive}
               streamMode={pipView.streamMode}
               variant={pipView.variant}
             />
@@ -706,25 +732,29 @@ function App() {
 
 type ViewModelInputs = {
   earthEmissionSeenByShip: number
+  earthObservedTravelerRate: number
+  earthObservedTravelerShift?: DopplerColorShift
   hasEarthSeenTurnaround: boolean
   sample: ReturnType<typeof sampleScenario>
   shipEmissionSeenByEarth: number
-  streamRate: number
+  travelerObservedEarthRate: number
+  travelerObservedEarthShift?: DopplerColorShift
   travelerAgeSeenByEarth: number
   travelerPositionSeenByEarth: number
 }
 
 function getViewModel(pointOfView: PointOfView, inputs: ViewModelInputs) {
-  const { earthEmissionSeenByShip, hasEarthSeenTurnaround, sample, streamRate, travelerAgeSeenByEarth, travelerPositionSeenByEarth } = inputs
+  const { earthEmissionSeenByShip, earthObservedTravelerRate, hasEarthSeenTurnaround, sample, travelerObservedEarthRate } = inputs
 
   if (pointOfView === 'earth') {
     return {
       localAge: sample.earthElapsedTime,
-      note: hasEarthSeenTurnaround ? 'Turnaround visible' : 'Turnaround not visible yet',
-      primaryStat: `Local clock ${formatTime(sample.earthElapsedTime)}`,
-      secondaryStat: `Received ship ${formatTime(travelerAgeSeenByEarth)} at ${travelerPositionSeenByEarth.toFixed(2)} ly, ${streamRate.toFixed(2)}x`,
+      stats: [
+        hasEarthSeenTurnaround ? 'Turnaround visible' : 'Turnaround not visible yet',
+        apparentAgeLabel('Traveler', earthObservedTravelerRate),
+      ],
       streamMode: 'local' as const,
-      subtitle: 'Earth local experience',
+      subtitle: '',
       title: 'Earth POV',
       variant: 'earth' as const,
     }
@@ -732,9 +762,10 @@ function getViewModel(pointOfView: PointOfView, inputs: ViewModelInputs) {
 
   return {
     localAge: sample.shipProperTime,
-    note: 'The traveler feels normal locally.',
-    primaryStat: `Ship clock ${formatTime(sample.shipProperTime)}`,
-    secondaryStat: `${sample.shipPosition.toFixed(2)} ly from Earth`,
+    stats: [
+      `${sample.shipPosition.toFixed(2)} ly from Earth`,
+      apparentAgeLabel('Earth', travelerObservedEarthRate),
+    ],
     streamMode: 'local' as const,
     subtitle: `Received Earth stream from ${formatTime(earthEmissionSeenByShip)}`,
     title: 'Traveler POV',
@@ -743,14 +774,25 @@ function getViewModel(pointOfView: PointOfView, inputs: ViewModelInputs) {
 }
 
 function getReceivedViewModel(pointOfView: PointOfView, inputs: Omit<ViewModelInputs, 'hasEarthSeenTurnaround'>) {
-  const { earthEmissionSeenByShip, sample, shipEmissionSeenByEarth, streamRate, travelerAgeSeenByEarth, travelerPositionSeenByEarth } = inputs
+  const {
+    earthEmissionSeenByShip,
+    earthObservedTravelerRate,
+    earthObservedTravelerShift,
+    sample,
+    shipEmissionSeenByEarth,
+    travelerObservedEarthRate,
+    travelerObservedEarthShift,
+    travelerAgeSeenByEarth,
+    travelerPositionSeenByEarth,
+  } = inputs
 
   if (pointOfView === 'traveler') {
     return {
       localAge: travelerAgeSeenByEarth,
       note: `Signal delay ${formatTime(sample.coordinateTime - shipEmissionSeenByEarth)}`,
       primaryStat: `Received ship clock ${formatTime(travelerAgeSeenByEarth)}`,
-      secondaryStat: `${travelerPositionSeenByEarth.toFixed(2)} ly from Earth, ${streamRate.toFixed(2)}x`,
+      secondaryStat: `${travelerPositionSeenByEarth.toFixed(2)} ly from Earth, ${earthObservedTravelerRate.toFixed(2)}x`,
+      signalShift: earthObservedTravelerShift ?? 'neutral',
       streamMode: 'received' as const,
       subtitle: `Received traveler stream at Earth`,
       telescopeLabel: 'Telescope view of traveler',
@@ -763,7 +805,8 @@ function getReceivedViewModel(pointOfView: PointOfView, inputs: Omit<ViewModelIn
     localAge: earthEmissionSeenByShip,
     note: `Earth signal age ${formatTime(sample.coordinateTime - earthEmissionSeenByShip)}`,
     primaryStat: `Received Earth clock ${formatTime(earthEmissionSeenByShip)}`,
-    secondaryStat: 'What the traveler can see from Earth.',
+    secondaryStat: `What the traveler can see from Earth, ${travelerObservedEarthRate.toFixed(2)}x`,
+    signalShift: travelerObservedEarthShift ?? 'neutral',
     streamMode: 'received' as const,
     subtitle: `Received Earth stream from ${formatTime(earthEmissionSeenByShip)}`,
     telescopeLabel: 'Telescope view of earth',
@@ -1139,6 +1182,26 @@ function clamp(value: number, min: number, max: number): number {
   }
 
   return Math.min(max, Math.max(min, value))
+}
+
+function planetScaleForDistance(distance: number, fadeDistance: number): number {
+  if (fadeDistance <= 0) {
+    return 0
+  }
+
+  return clamp(1 - distance / fadeDistance, 0, 1)
+}
+
+function apparentAgeLabel(subject: 'Earth' | 'Traveler', rate: number): string {
+  if (rate < 0.999) {
+    return `${subject} appears to age slowly`
+  }
+
+  if (rate > 1.001) {
+    return `${subject} appears to age quickly`
+  }
+
+  return `${subject} appears normal`
 }
 
 function parseDraftNumber(value: string, min: number, max: number) {

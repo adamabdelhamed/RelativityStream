@@ -23,6 +23,7 @@ import {
   visibleTreeGenerations,
   visualTreeYearFromLocalAge,
 } from './treeLifecycle'
+import type { DopplerColorShift } from './model'
 
 type SceneVariant = 'earth' | 'space'
 
@@ -32,6 +33,9 @@ type ThreeTreeSceneProps = {
   focusOffsetX?: number
   focusOffsetY?: number
   localAge: number
+  nearbyPlanetScale?: number
+  signalShift?: DopplerColorShift
+  starMotionActive?: boolean
   streamMode: 'local' | 'received'
   variant: SceneVariant
 }
@@ -89,8 +93,11 @@ type TreeMaterials = {
 type SceneObjects = {
   camera: THREE.PerspectiveCamera
   decayPiles: DecayPile[]
+  nearbyPlanet?: THREE.Mesh
   renderer: THREE.WebGLRenderer
   scene: THREE.Scene
+  starBasePositions?: Float32Array
+  starField?: THREE.Points
   trees: TreeGeneration[]
 }
 
@@ -233,12 +240,12 @@ function createMaterials(variant: SceneVariant): TreeMaterials {
 
   return {
     bark: new THREE.MeshStandardMaterial({
-      color: space ? 0xd99558 : 0x7a4729,
-      emissive: space ? 0x5f2418 : 0x000000,
-      emissiveIntensity: space ? 0.72 : 0,
+      color: space ? 0x7cff65 : 0x7a4729,
+      emissive: space ? 0x39ff74 : 0x000000,
+      emissiveIntensity: space ? 1.18 : 0,
       map: barkTexture,
-      metalness: space ? 0.08 : 0,
-      roughness: space ? 0.78 : 0.86,
+      metalness: space ? 0.04 : 0,
+      roughness: space ? 0.64 : 0.86,
       transparent: true,
     }),
     leaf: new THREE.MeshStandardMaterial({
@@ -262,8 +269,8 @@ function createMaterials(variant: SceneVariant): TreeMaterials {
       transparent: true,
     }),
     young: new THREE.MeshStandardMaterial({
-      color: space ? 0xf2b06a : 0x6f8f42,
-      emissive: space ? 0x6a2f1e : 0x000000,
+      color: space ? 0x9affc2 : 0x6f8f42,
+      emissive: space ? 0x1e6a3f : 0x000000,
       emissiveIntensity: space ? 0.52 : 0,
       metalness: space ? 0.08 : 0,
       roughness: 0.76,
@@ -595,12 +602,12 @@ function updateTree(
     setMaterialOpacity(root.material as THREE.Material, visibleOpacity)
   }
 
-  const liveColor = new THREE.Color(variant === 'earth' ? 0x7a4729 : 0xd99558)
-  const deadColor = new THREE.Color(variant === 'earth' ? 0x6b5a48 : 0x8e5b5f)
-  const youngColor = new THREE.Color(variant === 'earth' ? 0x6f8f42 : 0xf2b06a)
-  const liveGlow = new THREE.Color(variant === 'earth' ? 0x000000 : 0x5f2418)
-  const deadGlow = new THREE.Color(variant === 'earth' ? 0x000000 : 0x241018)
-  const youngGlow = new THREE.Color(variant === 'earth' ? 0x000000 : 0x6a2f1e)
+  const liveColor = new THREE.Color(variant === 'earth' ? 0x7a4729 : 0x7cff65)
+  const deadColor = new THREE.Color(variant === 'earth' ? 0x6b5a48 : 0x4fb86a)
+  const youngColor = new THREE.Color(variant === 'earth' ? 0x6f8f42 : 0x9affc2)
+  const liveGlow = new THREE.Color(variant === 'earth' ? 0x000000 : 0x39ff74)
+  const deadGlow = new THREE.Color(variant === 'earth' ? 0x000000 : 0x145c33)
+  const youngGlow = new THREE.Color(variant === 'earth' ? 0x000000 : 0x1e6a3f)
   for (const branch of tree.branches) {
     const temporalGrowth = growWindow(phase.growth, branch.startAt, branch.startAt + 0.3)
     const growth = temporalGrowth * visibleOpacity
@@ -612,7 +619,7 @@ function updateTree(
     const material = branch.mesh.material as THREE.MeshStandardMaterial
     material.color.copy(branch.depth > 1 ? youngColor : liveColor).lerp(deadColor, branchWilt)
     material.emissive.copy(branch.depth > 1 ? youngGlow : liveGlow).lerp(deadGlow, branchWilt)
-    material.emissiveIntensity = variant === 'space' ? 0.62 * visibleOpacity : 0
+    material.emissiveIntensity = variant === 'space' ? 1.05 * visibleOpacity : 0
     setMaterialOpacity(material, visibleOpacity)
     setMaterialOpacity(branch.tip.material as THREE.Material, visibleOpacity)
   }
@@ -702,7 +709,7 @@ function createScene(mount: HTMLDivElement, variant: SceneVariant): SceneObjects
   mount.appendChild(renderer.domElement)
 
   const scene = new THREE.Scene()
-  scene.fog = new THREE.FogExp2(variant === 'earth' ? 0x07110d : 0x02030a, variant === 'earth' ? 0.026 : 0.014)
+  scene.fog = new THREE.FogExp2(variant === 'earth' ? 0x8fbbe7 : 0x02030a, variant === 'earth' ? 0.016 : 0.014)
   const camera = new THREE.PerspectiveCamera(45, 1, 0.03, 180)
   camera.position.set(TREE_CAMERA_POSITION.x, TREE_CAMERA_POSITION.y, TREE_CAMERA_POSITION.z)
   camera.lookAt(TREE_CAMERA_TARGET.x, TREE_CAMERA_TARGET.y, TREE_CAMERA_TARGET.z)
@@ -729,9 +736,9 @@ function createScene(mount: HTMLDivElement, variant: SceneVariant): SceneObjects
   scene.add(rim)
 
   const skyTexture = makeGradientTexture(
-    variant === 'earth' ? '#101b3a' : '#02030b',
-    variant === 'earth' ? '#29436b' : '#101848',
-    variant === 'earth' ? '#17130b' : '#03040a',
+    variant === 'earth' ? '#74b7f2' : '#02030b',
+    variant === 'earth' ? '#b9dcff' : '#101848',
+    variant === 'earth' ? '#324f2a' : '#03040a',
   )
   const sky = new THREE.Mesh(
     new THREE.SphereGeometry(115, 64, 32),
@@ -742,7 +749,7 @@ function createScene(mount: HTMLDivElement, variant: SceneVariant): SceneObjects
   if (variant === 'earth') {
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(72, 128),
-      new THREE.MeshStandardMaterial({ color: 0x172914, roughness: 0.95 }),
+      new THREE.MeshStandardMaterial({ color: 0x244b24, roughness: 0.95 }),
     )
     ground.rotation.x = -Math.PI / 2
     ground.receiveShadow = true
@@ -758,7 +765,11 @@ function createScene(mount: HTMLDivElement, variant: SceneVariant): SceneObjects
       stars[index * 3 + 2] = -22 - random() * 78
     }
     starsGeometry.setAttribute('position', new THREE.BufferAttribute(stars, 3))
-    scene.add(new THREE.Points(starsGeometry, new THREE.PointsMaterial({ color: 0xdceaff, size: 0.07 })))
+    const starField = new THREE.Points(
+      starsGeometry,
+      new THREE.PointsMaterial({ color: 0xdceaff, opacity: 0.86, size: 0.07, transparent: true }),
+    )
+    scene.add(starField)
 
     const platform = new THREE.Mesh(
       new THREE.CylinderGeometry(3.2, 3.7, 0.22, 9),
@@ -768,11 +779,19 @@ function createScene(mount: HTMLDivElement, variant: SceneVariant): SceneObjects
     platform.receiveShadow = true
     scene.add(platform)
 
+    const planetMaterial = new THREE.MeshStandardMaterial({
+      color: 0x285e72,
+      emissive: 0x061822,
+      opacity: 0,
+      roughness: 0.86,
+      transparent: true,
+    })
     const planet = new THREE.Mesh(
       new THREE.SphereGeometry(2.2, 48, 24),
-      new THREE.MeshStandardMaterial({ color: 0x285e72, emissive: 0x061822, roughness: 0.86 }),
+      planetMaterial,
     )
     planet.position.set(8, 4.4, -13)
+    planet.visible = false
     scene.add(planet)
   }
 
@@ -782,7 +801,13 @@ function createScene(mount: HTMLDivElement, variant: SceneVariant): SceneObjects
     return tree
   })
 
-  return { camera, decayPiles: [], renderer, scene, trees }
+  const starField = scene.children.find((object) => object instanceof THREE.Points) as THREE.Points | undefined
+  const starBasePositions = variant === 'space' && starField
+    ? ((starField.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array).slice()
+    : undefined
+  const nearbyPlanet = scene.children.find((object) => object instanceof THREE.Mesh && object.geometry instanceof THREE.SphereGeometry && object.position.x === 8) as THREE.Mesh | undefined
+
+  return { camera, decayPiles: [], nearbyPlanet, renderer, scene, starBasePositions, starField, trees }
 }
 
 export function ThreeTreeScene({
@@ -791,15 +816,18 @@ export function ThreeTreeScene({
   focusOffsetX = 0,
   focusOffsetY = 0,
   localAge,
+  nearbyPlanetScale = 0,
+  signalShift = 'neutral',
+  starMotionActive = false,
   streamMode,
   variant,
 }: ThreeTreeSceneProps) {
   const mountRef = useRef<HTMLDivElement | null>(null)
-  const propsRef = useRef({ ageTotal, cameraDistanceScale, focusOffsetX, focusOffsetY, localAge, streamMode, variant })
+  const propsRef = useRef({ ageTotal, cameraDistanceScale, focusOffsetX, focusOffsetY, localAge, nearbyPlanetScale, signalShift, starMotionActive, streamMode, variant })
 
   useEffect(() => {
-    propsRef.current = { ageTotal, cameraDistanceScale, focusOffsetX, focusOffsetY, localAge, streamMode, variant }
-  }, [ageTotal, cameraDistanceScale, focusOffsetX, focusOffsetY, localAge, streamMode, variant])
+    propsRef.current = { ageTotal, cameraDistanceScale, focusOffsetX, focusOffsetY, localAge, nearbyPlanetScale, signalShift, starMotionActive, streamMode, variant }
+  }, [ageTotal, cameraDistanceScale, focusOffsetX, focusOffsetY, localAge, nearbyPlanetScale, signalShift, starMotionActive, streamMode, variant])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -849,14 +877,38 @@ export function ThreeTreeScene({
         const tree = objects.trees[index]
         updateTree(tree, visualTreeYear, generations[index], current.variant, elapsed)
       }
+      if (objects.nearbyPlanet) {
+        const planetScale = clamp01(current.nearbyPlanetScale)
+        objects.nearbyPlanet.visible = planetScale > 0.02
+        objects.nearbyPlanet.scale.setScalar(Math.max(0.001, planetScale))
+        const planetMaterial = objects.nearbyPlanet.material as THREE.MeshStandardMaterial
+        planetMaterial.opacity = planetScale
+      }
+      if (objects.starField && objects.starBasePositions) {
+        const positions = objects.starField.geometry.getAttribute('position') as THREE.BufferAttribute
+        for (let index = 0; index < positions.count; index += 1) {
+          const baseX = objects.starBasePositions[index * 3]
+          const baseY = objects.starBasePositions[index * 3 + 1]
+          const baseZ = objects.starBasePositions[index * 3 + 2]
+          const laneOffset = (index % 29) * 0.017
+          const travel = current.starMotionActive
+            ? ((elapsed * 18 + visualTreeYear * 3 + laneOffset * 100) % 58)
+            : 0
+          positions.setXYZ(index, baseX, baseY, baseZ + travel)
+        }
+        positions.needsUpdate = true
+      }
+      const cameraY = current.variant === 'earth' ? 3.05 : TREE_CAMERA_POSITION.y
+      const cameraZ = current.variant === 'earth' ? 17.5 : TREE_CAMERA_POSITION.z
+      const targetY = current.variant === 'earth' ? 1.55 : TREE_CAMERA_TARGET.y
       objects.camera.position.set(
         TREE_CAMERA_POSITION.x * current.cameraDistanceScale,
-        TREE_CAMERA_POSITION.y * current.cameraDistanceScale,
-        TREE_CAMERA_POSITION.z * current.cameraDistanceScale,
+        cameraY * current.cameraDistanceScale,
+        cameraZ * current.cameraDistanceScale,
       )
       objects.camera.lookAt(
         TREE_CAMERA_TARGET.x + current.focusOffsetX * 7,
-        TREE_CAMERA_TARGET.y + current.focusOffsetY * 4,
+        targetY + current.focusOffsetY * 4,
         TREE_CAMERA_TARGET.z,
       )
       objects.renderer.render(objects.scene, objects.camera)
@@ -886,7 +938,11 @@ export function ThreeTreeScene({
     <div
       ref={mountRef}
       className="three-tree-scene"
+      data-nearby-planet={nearbyPlanetScale > 0.02 ? 'visible' : 'hidden'}
+      data-nearby-planet-scale={nearbyPlanetScale.toFixed(3)}
       data-stream-mode={streamMode}
+      data-signal-shift={signalShift}
+      data-star-motion={starMotionActive ? 'active' : 'stopped'}
       data-variant={variant}
       role="img"
       aria-label={`${variant === 'earth' ? 'Earth' : 'Traveler'} 3D tree aged to ${formatAge(localAge)}`}
