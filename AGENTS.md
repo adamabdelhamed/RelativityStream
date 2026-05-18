@@ -581,4 +581,4 @@ Offline research may result in files being placed in the top level NonIntegrated
 
 ## Backlog
 
-The Backlog.md file contains known work that you may be assigned to complete.
+The Backlog.md file contains known work that you may be assigned to complete. When tasked with backlog work then remove items you have you completed, and document the completion in the work report.
